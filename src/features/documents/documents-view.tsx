@@ -21,6 +21,7 @@ import {
   Wand2,
   Plus,
   Clock,
+  Palette,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Markdown } from "@/components/markdown";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -55,7 +57,7 @@ export function DocumentsView() {
   });
 
   const generate = useMutation({
-    mutationFn: async (vars: { templateKey: string; fields: Record<string, string> }) =>
+    mutationFn: async (vars: { templateKey: string; fields: Record<string, string>; brandVoiceId?: string }) =>
       api<{ document: DocumentDto; credits: number }>("/api/documents/generate", {
         method: "POST",
         body: JSON.stringify(vars),
@@ -104,7 +106,7 @@ export function DocumentsView() {
       <GenerateForm
         template={tpl}
         onBack={() => setMode("gallery")}
-        onSubmit={(fields) => generate.mutate({ templateKey: tpl.key, fields })}
+        onSubmit={(fields, brandVoiceId) => generate.mutate({ templateKey: tpl.key, fields, brandVoiceId })}
         loading={generate.isPending}
       />
     );
@@ -216,7 +218,7 @@ function GenerateForm({
 }: {
   template: (typeof TEMPLATES)[number];
   onBack: () => void;
-  onSubmit: (fields: Record<string, string>) => void;
+  onSubmit: (fields: Record<string, string>, brandVoiceId?: string) => void;
   loading: boolean;
 }) {
   const [fields, setFields] = useState<Record<string, string>>(() => {
@@ -224,7 +226,16 @@ function GenerateForm({
     for (const f of template.fields) init[f.key] = f.default ?? "";
     return init;
   });
+  const [brandVoiceId, setBrandVoiceId] = useState<string>("");
   const Icon = ICONS[template.icon] ?? FileText;
+
+  const { data: voices = [] } = useQuery<{ id: string; name: string; isDefault: boolean }[]>({
+    queryKey: ["brand-voices"],
+    queryFn: () => api("/api/brand-voices"),
+  });
+
+  // Resolve the effective voice: explicit selection, or the default voice, or none.
+  const effectiveVoiceId = brandVoiceId || (voices.find((v) => v.isDefault)?.id ?? "");
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 md:py-8">
@@ -267,11 +278,37 @@ function GenerateForm({
               )}
             </div>
           ))}
+
+          {/* Brand voice selector */}
+          {voices.length > 0 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="brand-voice" className="flex items-center gap-1.5 text-sm font-medium">
+                <Palette className="h-3.5 w-3.5" />
+                Brand voice
+              </Label>
+              <Select value={brandVoiceId} onValueChange={(v) => setBrandVoiceId(v === effectiveVoiceId && !brandVoiceId ? "" : v)}>
+                <SelectTrigger id="brand-voice" className="w-full">
+                  <SelectValue placeholder="No voice (default tone)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No voice (default tone)</SelectItem>
+                  {voices.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}{v.isDefault ? " · default" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {brandVoiceId === "" && effectiveVoiceId && (
+                <p className="text-[11px] text-muted-foreground">Using your default voice automatically.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">5 credits · ~10 seconds</p>
-          <Button onClick={() => onSubmit(fields)} disabled={loading} className="gap-2">
+          <Button onClick={() => onSubmit(fields, effectiveVoiceId || undefined)} disabled={loading} className="gap-2">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {loading ? "Generating…" : "Generate document"}
           </Button>

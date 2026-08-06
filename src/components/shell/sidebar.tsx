@@ -15,6 +15,7 @@ import {
   PanelLeft,
   Plus,
   ChevronRight,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useWorkspace, type ModuleKey } from "@/store/workspace";
 import { useCurrentUser } from "@/hooks/use-current-user";
@@ -58,7 +59,10 @@ const NAV: {
   },
   {
     group: "Account",
-    items: [{ key: "billing", label: "Plans & Credits", icon: CreditCard }],
+    items: [
+      { key: "billing", label: "Plans & Credits", icon: CreditCard },
+      { key: "settings", label: "Settings", icon: SettingsIcon },
+    ],
   },
 ];
 

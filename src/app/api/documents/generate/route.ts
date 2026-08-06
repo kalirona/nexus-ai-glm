@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     templateKey: string;
     fields: Record<string, string>;
     title?: string;
+    brandVoiceId?: string;
   };
 
   if (!body.templateKey) {
@@ -31,15 +32,29 @@ export async function POST(req: Request) {
     );
   }
 
+  // Optional brand voice injection
+  let voicePrompt = "";
+  if (body.brandVoiceId) {
+    const voice = await db.brandVoice.findFirst({
+      where: { id: body.brandVoiceId, userId: user.id },
+      select: { systemPrompt: true, name: true },
+    });
+    if (voice) voicePrompt = voice.systemPrompt;
+  }
+
   // Fill the user prompt template
   let userPrompt = template.userPromptTpl;
   for (const [k, v] of Object.entries(body.fields || {})) {
     userPrompt = userPrompt.replaceAll(`{${k}}`, v || "");
   }
 
+  const systemContent = voicePrompt
+    ? `${template.systemPrompt}\n\n${voicePrompt}`
+    : template.systemPrompt;
+
   const content = await chatCompletion(
     [
-      { role: "system", content: template.systemPrompt },
+      { role: "system", content: systemContent },
       { role: "user", content: userPrompt },
     ],
     "auto"
@@ -63,7 +78,10 @@ export async function POST(req: Request) {
   });
 
   await spendCredits(user.id, CREDIT_COSTS.document, "document", doc.id);
-  await logAudit(user.id, "document.generate", "document", doc.id, { template: template.key });
+  await logAudit(user.id, "document.generate", "document", doc.id, {
+    template: template.key,
+    brandVoice: body.brandVoiceId || null,
+  });
 
   const refreshed = await db.user.findUnique({
     where: { id: user.id },

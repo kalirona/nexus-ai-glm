@@ -23,6 +23,8 @@ import {
   CreditCard,
   Sparkles,
   Rocket,
+  Settings as SettingsIcon,
+  Palette,
 } from "lucide-react";
 
 const ITEMS: { key: ModuleKey; label: string; hint: string; icon: typeof LayoutDashboard }[] = [
@@ -32,6 +34,7 @@ const ITEMS: { key: ModuleKey; label: string; hint: string; icon: typeof LayoutD
   { key: "images", label: "AI Images", hint: "Create visuals", icon: ImageIcon },
   { key: "agents", label: "AI Agents", hint: "Specialised assistants", icon: Bot },
   { key: "billing", label: "Plans & Credits", hint: "Upgrade / manage", icon: CreditCard },
+  { key: "settings", label: "Settings", hint: "Account & brand voice", icon: SettingsIcon },
 ];
 
 export function CommandPalette() {

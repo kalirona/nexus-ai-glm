@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return NextResponse.json(chat);
 }
 
-/** PATCH /api/chats/:id — update title / pinned / archived. */
+/** PATCH /api/chats/:id — update title / pinned / archived / model / folderId. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getCurrentUser();
@@ -31,12 +31,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     pinned?: boolean;
     archived?: boolean;
     model?: string;
+    folderId?: string | null;
   };
   const data: Record<string, unknown> = {};
   if (typeof body.title === "string") data.title = body.title.slice(0, 200);
   if (typeof body.pinned === "boolean") data.pinned = body.pinned;
   if (typeof body.archived === "boolean") data.archived = body.archived;
   if (typeof body.model === "string") data.model = body.model;
+  // folderId: null to remove from folder, string to assign
+  if (body.folderId !== undefined) {
+    data.folderId = body.folderId === null ? null : body.folderId;
+  }
 
   const chat = await db.chat.updateMany({ where: { id, userId: user.id }, data });
   if (chat.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });

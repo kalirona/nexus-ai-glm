@@ -345,3 +345,65 @@ export const CREDIT_COSTS = {
   image: 8,
   document: 5,
 } as const;
+
+export const FOLDER_COLORS = [
+  { id: "emerald", label: "Emerald", dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  { id: "amber", label: "Amber", dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
+  { id: "rose", label: "Rose", dot: "bg-rose-500", text: "text-rose-600 dark:text-rose-400" },
+  { id: "teal", label: "Teal", dot: "bg-teal-500", text: "text-teal-600 dark:text-teal-400" },
+  { id: "violet", label: "Violet", dot: "bg-violet-500", text: "text-violet-600 dark:text-violet-400" },
+  { id: "sky", label: "Sky", dot: "bg-sky-500", text: "text-sky-600 dark:text-sky-400" },
+  { id: "slate", label: "Slate", dot: "bg-slate-500", text: "text-slate-600 dark:text-slate-400" },
+] as const;
+
+/** Per-model credit cost overrides (chat). Default falls back to CREDIT_COSTS.chat. */
+export const MODEL_CREDIT_COST: Record<string, number> = {
+  auto: 1,
+  "glm-4.6": 1,
+  "glm-4.5": 1,
+  "glm-4.5v": 2,
+  "deepseek-v3": 3,
+};
+
+/** Plan feature flags for client-side gating. */
+export const PLAN_FEATURES = {
+  free: {
+    maxChats: 50,
+    maxProjects: 1,
+    brandVoices: 0,
+    proModels: false,
+    exports: false,
+    apiAccess: false,
+    watermarked: true,
+  },
+  starter: {
+    maxChats: 500,
+    maxProjects: 5,
+    brandVoices: 1,
+    proModels: false,
+    exports: false,
+    apiAccess: false,
+    watermarked: false,
+  },
+  pro: {
+    maxChats: Infinity,
+    maxProjects: Infinity,
+    brandVoices: 10,
+    proModels: true,
+    exports: true,
+    apiAccess: true,
+    watermarked: false,
+  },
+  agency: {
+    maxChats: Infinity,
+    maxProjects: Infinity,
+    brandVoices: Infinity,
+    proModels: true,
+    exports: true,
+    apiAccess: true,
+    watermarked: false,
+  },
+} as const;
+
+export type PlanId = keyof typeof PLAN_FEATURES;
+

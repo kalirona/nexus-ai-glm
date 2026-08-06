@@ -28,6 +28,7 @@ model User {
   chats           Chat[]
   documents       Document[]
   images          Image[]
+  brandVoices     BrandVoice[]
   transactions    CreditTransaction[]
   auditLogs       AuditLog[]
   apiKeys         ApiKey[]
@@ -192,4 +193,24 @@ model Agent {
   category     String
   capabilities String? // JSON string
   createdAt    DateTime @default(now())
+}
+
+/// Brand Voice profiles — reusable across chat, documents, marketing.
+model BrandVoice {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  description  String?
+  tone         String   @default("professional, confident")
+  vocabulary   String?  // comma-separated preferred words
+  avoidWords   String?  // comma-separated forbidden words
+  sampleCopy   String?
+  systemPrompt String
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

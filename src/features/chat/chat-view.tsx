@@ -21,6 +21,9 @@ import {
   Check,
   Pencil,
   ChevronDown,
+  ChevronRight,
+  FolderPlus,
+  Folder as FolderIcon,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -78,12 +81,51 @@ export function ChatView() {
   const [model, setModel] = useState("auto");
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Folders
+  const { data: folders = [] } = useQuery<{ id: string; name: string; color: string; chats: { id: string; title: string; updatedAt: string; pinned: boolean; model: string }[] }[]>({
+    queryKey: ["folders"],
+    queryFn: () => api("/api/folders?kind=chat"),
+  });
+
+  const createFolder = useMutation({
+    mutationFn: (name: string) =>
+      api("/api/folders", { method: "POST", body: JSON.stringify({ name, kind: "chat", color: "emerald" }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["folders"] });
+      setNewFolderName("");
+      setShowNewFolder(false);
+      toast.success("Folder created");
+    },
+  });
+
+  const deleteFolder = useMutation({
+    mutationFn: (id: string) => api(`/api/folders/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["folders"] });
+      qc.invalidateQueries({ queryKey: ["chats"] });
+      toast.success("Folder deleted");
+    },
+  });
+
+  const moveChatToFolder = useMutation({
+    mutationFn: ({ chatId, folderId }: { chatId: string; folderId: string | null }) =>
+      api(`/api/chats/${chatId}`, { method: "PATCH", body: JSON.stringify({ folderId }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["chats"] });
+      qc.invalidateQueries({ queryKey: ["folders"] });
+    },
+  });
+
   const messages = activeChat?.messages ?? [];
-  const pinned = chats.filter((c) => c.pinned && matchSearch(c, search));
-  const recent = chats.filter((c) => !c.pinned && matchSearch(c, search));
+  const chatFolderIds = new Set(folders.flatMap((f) => f.chats.map((c) => c.id)));
+  const pinned = chats.filter((c) => c.pinned && matchSearch(c, search) && !chatFolderIds.has(c.id));
+  const recent = chats.filter((c) => !c.pinned && matchSearch(c, search) && !chatFolderIds.has(c.id));
 
   // Auto-scroll while streaming
   useEffect(() => {
@@ -257,10 +299,91 @@ export function ChatView() {
           </div>
         </div>
         <ScrollArea className="flex-1 px-2 pb-3">
+          {/* Folders */}
+          {folders.length > 0 && (
+            <Section label="Folders" action={
+              <button
+                onClick={() => setShowNewFolder((s) => !s)}
+                className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="New folder"
+              >
+                <FolderPlus className="h-3.5 w-3.5" />
+              </button>
+            }>
+              {showNewFolder && (
+                <div className="mb-1.5 flex gap-1.5 px-1">
+                  <Input
+                    autoFocus
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newFolderName.trim()) createFolder.mutate(newFolderName.trim());
+                      if (e.key === "Escape") { setShowNewFolder(false); setNewFolderName(""); }
+                    }}
+                    placeholder="Folder name…"
+                    className="h-8 text-sm"
+                  />
+                  <Button size="sm" className="h-8 px-2" onClick={() => newFolderName.trim() && createFolder.mutate(newFolderName.trim())}>
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+              {folders.map((f) => {
+                const expanded = expandedFolders[f.id] ?? true;
+                return (
+                  <div key={f.id} className="group/folder mb-0.5">
+                    <div className="flex items-center gap-1 rounded-md px-1.5 py-1.5 hover:bg-sidebar-accent/60">
+                      <button
+                        onClick={() => setExpandedFolders((s) => ({ ...s, [f.id]: !expanded }))}
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label={expanded ? "Collapse" : "Expand"}
+                      >
+                        {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      </button>
+                      <FolderIcon className="h-4 w-4 text-primary/70" />
+                      <span className="flex-1 truncate text-sm font-medium">{f.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{f.chats.length}</span>
+                      <button
+                        onClick={() => deleteFolder.mutate(f.id)}
+                        className="opacity-0 transition-opacity group-hover/folder:opacity-100 text-muted-foreground hover:text-destructive"
+                        aria-label="Delete folder"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                    {expanded && f.chats.length > 0 && (
+                      <div className="ml-4 border-l pl-1">
+                        {f.chats.map((c) => (
+                          <ChatRow
+                            key={c.id}
+                            chat={{ ...c, folderId: f.id } as ChatDto}
+                            active={c.id === activeChatId}
+                            onClick={() => setActiveChat(c.id)}
+                            onMoveToFolder={(targetId) => moveChatToFolder.mutate({ chatId: c.id, folderId: targetId })}
+                            folders={folders}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {expanded && f.chats.length === 0 && (
+                      <p className="ml-7 py-1 text-[11px] text-muted-foreground/60">Empty</p>
+                    )}
+                  </div>
+                );
+              })}
+            </Section>
+          )}
           {pinned.length > 0 && (
             <Section label="Pinned">
               {pinned.map((c) => (
-                <ChatRow key={c.id} chat={c} active={c.id === activeChatId} onClick={() => setActiveChat(c.id)} />
+                <ChatRow
+                  key={c.id}
+                  chat={c}
+                  active={c.id === activeChatId}
+                  onClick={() => setActiveChat(c.id)}
+                  onMoveToFolder={(targetId) => moveChatToFolder.mutate({ chatId: c.id, folderId: targetId })}
+                  folders={folders}
+                />
               ))}
             </Section>
           )}
@@ -268,7 +391,16 @@ export function ChatView() {
             {recent.length === 0 ? (
               <p className="px-2 py-6 text-center text-xs text-muted-foreground">No conversations yet</p>
             ) : (
-              recent.map((c) => <ChatRow key={c.id} chat={c} active={c.id === activeChatId} onClick={() => setActiveChat(c.id)} />)
+              recent.map((c) => (
+                <ChatRow
+                  key={c.id}
+                  chat={c}
+                  active={c.id === activeChatId}
+                  onClick={() => setActiveChat(c.id)}
+                  onMoveToFolder={(targetId) => moveChatToFolder.mutate({ chatId: c.id, folderId: targetId })}
+                  folders={folders}
+                />
+              ))
             )}
           </Section>
         </ScrollArea>
@@ -425,17 +557,33 @@ function matchSearch(c: ChatDto, q: string) {
   return c.title.toLowerCase().includes(q.toLowerCase());
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({ label, children, action }: { label: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="mb-3">
-      <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">{label}</p>
+      <div className="flex items-center justify-between px-2 pb-1">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">{label}</p>
+        {action}
+      </div>
       <div className="space-y-0.5">{children}</div>
     </div>
   );
 }
 
-function ChatRow({ chat, active, onClick }: { chat: ChatDto; active: boolean; onClick: () => void }) {
+function ChatRow({
+  chat,
+  active,
+  onClick,
+  onMoveToFolder,
+  folders = [],
+}: {
+  chat: ChatDto;
+  active: boolean;
+  onClick: () => void;
+  onMoveToFolder?: (folderId: string | null) => void;
+  folders?: { id: string; name: string }[];
+}) {
   const qc = useQueryClient();
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
       onClick={onClick}
@@ -447,6 +595,38 @@ function ChatRow({ chat, active, onClick }: { chat: ChatDto; active: boolean; on
       <MessageSquare className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
       <span className="min-w-0 flex-1 truncate text-sm">{chat.title}</span>
       {chat.pinned && <Pin className="h-3 w-3 text-primary" />}
+      {onMoveToFolder && folders.length > 0 && (
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <button
+              onClick={(e) => e.stopPropagation()}
+              className="opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+              aria-label="Move to folder"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Move to folder</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {folders.map((f) => (
+              <DropdownMenuItem key={f.id} onClick={() => onMoveToFolder(f.id)}>
+                <FolderIcon className="mr-2 h-3.5 w-3.5" />
+                <span className="truncate">{f.name}</span>
+              </DropdownMenuItem>
+            ))}
+            {chat.folderId && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onMoveToFolder(null)}>
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Remove from folder
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <button
         onClick={(e) => {
           e.stopPropagation();
