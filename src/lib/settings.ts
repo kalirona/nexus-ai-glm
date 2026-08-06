@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { decrypt } from "@/lib/crypto";
 
 /**
  * Platform-wide settings store (key-value, JSON-encoded values).
@@ -105,20 +106,29 @@ export type PlatformSettings = typeof DEFAULT_SETTINGS;
  * Resolves the API key + base URL for a given role (chat or image).
  * Priority: default apiKeys entry for the role → legacy providerKey → null.
  * Returns null if no key is configured (caller falls back to SDK).
+ * Keys are stored encrypted — decrypted here before returning.
  */
 export async function resolveKeyForRole(
   role: "chat" | "image"
 ): Promise<{ apiKey: string; baseUrl: string } | null> {
   const apiKeys = await getSetting<ApiKeyConfig[]>("apiKeys", []);
-  // Find a default key that covers this role
+  // Find a default key that covers this role (apiKey field is encrypted)
   const match =
     apiKeys.find((k) => k.isDefault && (k.role === "all" || k.role === role) && k.apiKey) ||
     apiKeys.find((k) => (k.role === "all" || k.role === role) && k.apiKey);
   if (match) {
-    return { apiKey: match.apiKey, baseUrl: match.baseUrl };
+    const decryptedKey = decrypt(match.apiKey);
+    if (decryptedKey) {
+      return { apiKey: decryptedKey, baseUrl: match.baseUrl };
+    }
+    // If decrypt fails (e.g. old plaintext key), try using it directly
+    if (match.apiKey.length > 10) {
+      return { apiKey: match.apiKey, baseUrl: match.baseUrl };
+    }
   }
-  // Fall back to legacy providerKey
-  const legacyKey = await getSetting<string>("providerKey", "");
+  // Fall back to legacy providerKey (also encrypted)
+  const legacyKeyRaw = await getSetting<string>("providerKey", "");
+  const legacyKey = decrypt(legacyKeyRaw) || legacyKeyRaw; // try decrypt, fall back to plaintext
   const legacyBaseUrl = await getSetting<string>("baseUrl", DEFAULT_SETTINGS.baseUrl);
   if (legacyKey) return { apiKey: legacyKey, baseUrl: legacyBaseUrl };
   return null;

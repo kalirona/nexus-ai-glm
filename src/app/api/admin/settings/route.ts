@@ -2,14 +2,10 @@ import { NextResponse } from "next/server";
 import { requireAdmin, logAudit } from "@/lib/auth";
 import { getSetting, setSetting, DEFAULT_SETTINGS, type PlatformSettings, type CustomModel, type ApiKeyConfig } from "@/lib/settings";
 import { AI_PROVIDERS } from "@/lib/constants";
+import { encrypt, decrypt, maskKey } from "@/lib/crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function maskKey(key: string): string {
-  if (key.length <= 10) return "••••••••";
-  return key.slice(0, 6) + "••••••••" + key.slice(-4);
-}
 
 /** GET /api/admin/settings — full platform settings (admin only). */
 export async function GET() {
@@ -82,10 +78,10 @@ export async function PATCH(req: Request) {
     changed.push("providerId");
   }
 
-  // Handle API key save for the selected provider
+  // Handle API key save for the selected provider (encrypted)
   if (typeof body.providerKey === "string" && body.providerKey.trim()) {
     const key = body.providerKey.trim();
-    await setSetting("providerKey", key);
+    await setSetting("providerKey", encrypt(key));
     await setSetting("providerKeyMasked", maskKey(key));
     changed.push("providerKey");
   }
@@ -123,7 +119,7 @@ export async function PATCH(req: Request) {
     changed.push("customModels");
   }
 
-  // API keys — full replace. Preserve existing raw keys when incoming is empty.
+  // API keys — full replace. Encrypt new keys before storing, preserve existing encrypted keys.
   if (Array.isArray(body.apiKeys)) {
     const existing = await getSetting<ApiKeyConfig[]>("apiKeys", []);
     const existingMap = new Map(existing.map((k) => [k.id, k]));
@@ -132,18 +128,32 @@ export async function PATCH(req: Request) {
     let defaultsByRole: Record<string, string | null> = {};
     const sanitized: ApiKeyConfig[] = body.apiKeys.map((k) => {
       const prev = existingMap.get(k.id);
-      let rawKey = k.apiKey;
-      if (!rawKey && prev?.apiKey) rawKey = prev.apiKey;
+      let storedKey: string;
+
+      if (k.apiKey && k.apiKey.trim()) {
+        // New/updated key — encrypt before storing
+        storedKey = encrypt(k.apiKey.trim());
+      } else if (prev?.apiKey) {
+        // No new key provided — keep the existing encrypted key
+        storedKey = prev.apiKey;
+      } else {
+        storedKey = "";
+      }
 
       // Track defaults to enforce uniqueness
       const roleKey = k.role;
       if (k.isDefault) {
         if (defaultsByRole[roleKey] !== undefined) {
-          // Already have a default for this role — demote this one
           k.isDefault = false;
         } else {
           defaultsByRole[roleKey] = k.id;
         }
+      }
+
+      // Mask for display: decrypt then mask (so we show the real key's mask)
+      let displayMask = prev?.apiKeyMasked ?? "";
+      if (k.apiKey && k.apiKey.trim()) {
+        displayMask = maskKey(k.apiKey.trim());
       }
 
       return {
@@ -152,8 +162,8 @@ export async function PATCH(req: Request) {
         role: k.role,
         provider: k.provider,
         baseUrl: k.baseUrl,
-        apiKey: rawKey,
-        apiKeyMasked: rawKey ? maskKey(rawKey) : prev?.apiKeyMasked ?? "",
+        apiKey: storedKey, // ENCRYPTED at rest
+        apiKeyMasked: displayMask,
         isDefault: k.isDefault,
         createdAt: k.createdAt || prev?.createdAt || new Date().toISOString(),
       };

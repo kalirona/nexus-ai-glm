@@ -95,8 +95,23 @@ export async function getProviderKey(providerId: string): Promise<string> {
   // The apiKey field is encrypted at rest — decrypt it
   const keyEntry = apiKeys.find((k) => k.provider === providerId && k.isDefault) ||
     apiKeys.find((k) => k.provider === providerId);
-  if (!keyEntry?.apiKey) return "";
-  return decrypt(keyEntry.apiKey);
+  if (keyEntry?.apiKey) {
+    const decrypted = decrypt(keyEntry.apiKey);
+    if (decrypted) return decrypted;
+    // Fallback: if decrypt fails (old plaintext key), use as-is
+    if (keyEntry.apiKey.length > 10) return keyEntry.apiKey;
+  }
+
+  // Fall back to legacy providerKey (also encrypted)
+  const legacyKeyRaw = await getSetting<string>("providerKey", "");
+  if (legacyKeyRaw) {
+    const decrypted = decrypt(legacyKeyRaw);
+    if (decrypted) return decrypted;
+    // Old plaintext fallback
+    if (legacyKeyRaw.length > 10) return legacyKeyRaw;
+  }
+
+  return "";
 }
 
 /** Builds auth headers for a provider based on its auth scheme. */

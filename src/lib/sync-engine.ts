@@ -395,20 +395,28 @@ export async function verifyModel(modelDbId: string): Promise<{ verified: boolea
 
 /**
  * Gets the decrypted API key for a provider.
+ * Handles both encrypted keys (new) and plaintext keys (legacy).
  */
 async function getProviderKey(providerId: string): Promise<string> {
-  // First check the apiKeys[] array (with encryption)
+  // First check the apiKeys[] array (encrypted at rest)
   const apiKeys = await getSetting<ApiKeyConfig[]>("apiKeys", []);
   const keyEntry = apiKeys.find((k) => k.provider === providerId && k.isDefault) ||
     apiKeys.find((k) => k.provider === providerId);
   if (keyEntry?.apiKey) {
     const decrypted = decrypt(keyEntry.apiKey);
     if (decrypted) return decrypted;
+    // Fallback: old plaintext key
+    if (keyEntry.apiKey.length > 10) return keyEntry.apiKey;
   }
 
-  // Fall back to legacy providerKey (plaintext, stored in settings)
-  const legacyKey = await getSetting<string>("providerKey", "");
-  if (legacyKey) return legacyKey;
+  // Fall back to legacy providerKey (may be encrypted or plaintext)
+  const legacyKeyRaw = await getSetting<string>("providerKey", "");
+  if (legacyKeyRaw) {
+    const decrypted = decrypt(legacyKeyRaw);
+    if (decrypted) return decrypted;
+    // Old plaintext fallback
+    if (legacyKeyRaw.length > 10) return legacyKeyRaw;
+  }
 
   return "";
 }
