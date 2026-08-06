@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, lazy } from "react";
-import { Sidebar } from "@/components/shell/sidebar";
+import { Sidebar, MobileSidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { Footer } from "@/components/shell/footer";
@@ -23,10 +23,10 @@ const SettingsView = lazy(() => import("@/features/settings/settings-view").then
 
 function ModuleSkeleton() {
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4 p-4 md:p-6">
       <Skeleton className="h-8 w-48" />
       <Skeleton className="h-4 w-72" />
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-24" />
         ))}
@@ -42,6 +42,7 @@ export function AppShell() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <Sidebar />
+      <MobileSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
         <main className="flex-1 overflow-y-auto scroll-thin pb-20 md:pb-0 flex flex-col">

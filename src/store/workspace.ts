@@ -33,12 +33,15 @@ interface WorkspaceState {
   activeChatId: string | null;
   commandOpen: boolean;
   sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
   pendingAgent: PendingAgent | null;
   paywall: PaywallState;
   setActiveModule: (m: ModuleKey) => void;
   setActiveChat: (id: string | null) => void;
   setCommandOpen: (v: boolean) => void;
   toggleSidebar: () => void;
+  setSidebarCollapsed: (v: boolean) => void;
+  setMobileSidebarOpen: (v: boolean) => void;
   setPendingAgent: (a: PendingAgent | null) => void;
   openPaywall: (feature: string, reason?: string) => void;
   closePaywall: () => void;
@@ -51,12 +54,15 @@ export const useWorkspace = create<WorkspaceState>()(
       activeChatId: null,
       commandOpen: false,
       sidebarCollapsed: false,
+      mobileSidebarOpen: false,
       pendingAgent: null,
       paywall: { open: false, reason: "", feature: "" },
       setActiveModule: (m) => set({ activeModule: m }),
       setActiveChat: (id) => set({ activeChatId: id }),
       setCommandOpen: (v) => set({ commandOpen: v }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
+      setMobileSidebarOpen: (v) => set({ mobileSidebarOpen: v }),
       setPendingAgent: (a) => set({ pendingAgent: a }),
       openPaywall: (feature, reason = "") => set({ paywall: { open: true, feature, reason } }),
       closePaywall: () => set({ paywall: { open: false, reason: "", feature: "" } }),

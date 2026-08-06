@@ -56,3 +56,43 @@ Stage Summary:
 - Roadmap is profitability-first: Phase 2 (payments) ships before any new feature module because revenue is impossible until people can pay.
 - Retention (Phase 3) prioritized over the flashy Website Builder (Phase 4) because retention is cheaper than acquisition.
 - Document is the single source of truth for future agent handovers alongside worklog.md.
+
+---
+Task ID: 3
+Agent: lead-architect (main) — cron review round
+Task: Polish dashboard for mobile, fix dead buttons, overhaul sidebar (profile menu, persistent collapse, mobile drawer).
+
+Work Log:
+- Added `mobileSidebarOpen` + `setMobileSidebarOpen` to workspace store.
+- Rebuilt `src/components/shell/sidebar.tsx`:
+  - Split into `Sidebar` (desktop aside) + `MobileSidebar` (Sheet drawer) sharing a `SidebarContent` body.
+  - Default state: un-collapsed (sidebarCollapsed=false persisted).
+  - Collapse toggle button (PanelLeftClose/PanelLeft) in the brand row — desktop only.
+  - Profile row replaced with a `ProfileMenu` dropdown: avatar+name+email header, Profile & account, Settings, Plans & credits, theme toggle (Light/Dark mode), Sign out (toast).
+  - Collapsed mode shows avatar-only button that opens the same dropdown.
+- `src/components/shell/topbar.tsx`:
+  - Added hamburger `Menu` button (md:hidden) that opens the mobile sidebar.
+  - Search trigger now `hidden lg:flex` (was `sm:flex`) to avoid crowding tablets; mobile search button kept.
+  - Bell notifications button wired to a functional `DropdownMenu` with 3 real notification items (Credits low, Brand Voice feature, Weekly report) each navigating to the right module.
+  - Subtitle hidden on mobile (`hidden sm:block`) to save vertical space.
+- `src/components/shell/app-shell.tsx`: wired `<MobileSidebar />` into the shell.
+- `src/components/shell/mobile-nav.tsx`: expanded from 5 to 6 items (added Billing) for better mobile access; tighter spacing.
+- `src/components/shell/footer.tsx`: dead `<a href="#">` social links replaced with `<button>` that fires a toast; added Heart icon; "Enterprise-grade security" hidden on mobile.
+- `src/features/dashboard/dashboard-view.tsx` — full mobile polish:
+  - Container padding reduced on mobile (`px-3 py-4` → `sm:px-4 sm:py-6` → `md:px-6 md:py-8`).
+  - Hero: heading scales `text-xl → sm:text-2xl → md:text-3xl`; buttons use `size="sm"` on mobile with short labels ("Create"/"Credits") that expand on desktop.
+  - Stats grid: `grid-cols-2` on all sizes with smaller cards on mobile; stat labels shortened ("Chats", "Docs", "Images", "Credits").
+  - Chart height `200px` mobile → `260px` desktop; legend font 11px on mobile.
+  - Credit widget: button sizes `sm` on mobile.
+  - Quick actions: `grid-cols-2` mobile → `lg:grid-cols-4`; smaller icon boxes on mobile.
+  - Recent conversations: time-ago hidden on mobile to save horizontal space; max-height reduced.
+  - All gap values have mobile (`gap-2.5`) and desktop (`md:gap-4`) variants.
+- Verified with agent-browser:
+  - Desktop (1280×800): sidebar visible & un-collapsed by default, collapse/expand toggle works, profile dropdown opens with all 6 items, Settings navigates from dropdown, notifications dropdown shows 3 items.
+  - Mobile (375×812): hamburger "Open menu" button in topbar, sidebar hidden, drawer opens with full nav + credits widget + profile, clicking a nav item closes drawer and navigates, dashboard renders 2-col stats grid.
+  - ESLint clean; no runtime errors in dev.log.
+
+Stage Summary:
+- All user-reported issues fixed: dashboard mobile-optimized, dead buttons wired (notifications, footer, profile), sidebar profile tab → full account menu, sidebar stays un-collapsed by default with a collapse icon, mobile sidebar now a hamburger-triggered drawer.
+- Architecture: shared `SidebarContent` keeps desktop and mobile nav in sync; `ProfileMenu` is a single reusable component for both modes.
+- Next-phase candidates from ROADMAP.md still pending: Phase 2 real auth/payments, Phase 3 SEO/Marketing/YouTube workspaces, Brand Voice full integration into chat.
