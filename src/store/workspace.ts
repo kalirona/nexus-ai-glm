@@ -69,9 +69,12 @@ export const useWorkspace = create<WorkspaceState>()(
     }),
     {
       name: "nexus-ws",
+      version: 2, // bump to discard stale persisted `sidebarCollapsed` from v1
+      // Only persist the active module — NOT sidebarCollapsed.
+      // The sidebar must always start OPEN on load and only collapse on an
+      // explicit click of the collapse button.
       partialize: (s) => ({
         activeModule: s.activeModule,
-        sidebarCollapsed: s.sidebarCollapsed,
       }),
     }
   )

@@ -96,3 +96,19 @@ Stage Summary:
 - All user-reported issues fixed: dashboard mobile-optimized, dead buttons wired (notifications, footer, profile), sidebar profile tab → full account menu, sidebar stays un-collapsed by default with a collapse icon, mobile sidebar now a hamburger-triggered drawer.
 - Architecture: shared `SidebarContent` keeps desktop and mobile nav in sync; `ProfileMenu` is a single reusable component for both modes.
 - Next-phase candidates from ROADMAP.md still pending: Phase 2 real auth/payments, Phase 3 SEO/Marketing/YouTube workspaces, Brand Voice full integration into chat.
+
+---
+Task ID: 3-followup
+Agent: lead-architect (main)
+Task: Fix sidebar auto-collapsing on desktop — must stay open until explicitly collapsed.
+
+Work Log:
+- Root cause: `sidebarCollapsed` was persisted to localStorage via zustand `partialize`. Once collapsed (even during earlier testing), it reloaded in the collapsed state on every page load — appearing to "auto collapse".
+- Fix in `src/store/workspace.ts`:
+  - Removed `sidebarCollapsed` from `partialize` so it is no longer persisted — only `activeModule` is saved/restored.
+  - Bumped persist `version` to `2` so the stale v1 localStorage entry (which still contained `sidebarCollapsed: true`) is discarded on load.
+- Result: sidebar always starts OPEN on every page load. It only collapses when the user clicks the collapse button, and resets to open on reload.
+- Verified with agent-browser: reload shows "Collapse sidebar" button (open state); manual collapse → "Expand sidebar"; manual expand → "Collapse sidebar"; reload after collapse → back to open.
+
+Stage Summary:
+- Sidebar no longer auto-collapses. Default open, explicit collapse only, resets on reload.
