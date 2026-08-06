@@ -34,3 +34,25 @@ Stage Summary:
 - Architecture is feature-based with provider abstraction — swapping the AI provider touches only `src/lib/ai.ts`.
 - Known gaps / next-phase candidates: SEO/Marketing/YouTube workspaces (currently "coming soon"), real auth (Better Auth), R2/S3 file storage, export to PDF/DOCX (currently Markdown export), Stripe/LemonSqueezy integration for real billing, folder tree in chat sidebar, conversation branching, image upscaling/background removal, the 8 future modules (Automation, CRM, Knowledge Base, etc.).
 - Unresolved risk: the `/api/chat` streaming route persists the assistant message only on stream completion; if the client disconnects mid-stream the partial content is still flushed by the ReadableStream `finish` callback, but a hard server crash would lose it. Acceptable for MVP, harden in Phase 2 with a periodic flush.
+
+---
+Task ID: 1- Followup
+Agent: lead-architect (main)
+Task: Create a phased product & profitability roadmap document for NexusAI.
+
+Work Log:
+- Authored /home/z/my-project/ROADMAP.md — a living roadmap covering Phases 2–7.
+- Defined North-Star metrics (MRR, conversions, NRR, DAU/MAU, usage depth).
+- Phase 2: Monetization & Retention (auth, payments, usage billing, onboarding, gating, projects).
+- Phase 3: 10-in-1 Value Expansion (SEO, Marketing, YouTube workspaces + Brand Voice engine).
+- Phase 4: AI Website Builder (generation, visual editor, WP export).
+- Phase 5: Advanced AI & Files (vision, RAG, image editing, branching, memory).
+- Phase 6: Teams & White-Label (orgs, seats, client portal, white-label, audit).
+- Phase 7: Growth Engine (affiliate, public API, marketplace, automation).
+- Included prioritization rationale, profit levers, exit criteria per phase.
+- Added 5 copy-paste "next prompts" so the user can drive each phase.
+
+Stage Summary:
+- Roadmap is profitability-first: Phase 2 (payments) ships before any new feature module because revenue is impossible until people can pay.
+- Retention (Phase 3) prioritized over the flashy Website Builder (Phase 4) because retention is cheaper than acquisition.
+- Document is the single source of truth for future agent handovers alongside worklog.md.
