@@ -24,6 +24,11 @@ export async function GET() {
     cacheTtlSeconds: await getSetting("cacheTtlSeconds", DEFAULT_SETTINGS.cacheTtlSeconds),
     maxConcurrentStreams: await getSetting("maxConcurrentStreams", DEFAULT_SETTINGS.maxConcurrentStreams),
     responseTimeoutSeconds: await getSetting("responseTimeoutSeconds", DEFAULT_SETTINGS.responseTimeoutSeconds),
+    allowSignups: await getSetting("allowSignups", DEFAULT_SETTINGS.allowSignups),
+    maintenanceMode: await getSetting("maintenanceMode", DEFAULT_SETTINGS.maintenanceMode),
+    costPerChat: await getSetting("costPerChat", DEFAULT_SETTINGS.costPerChat),
+    costPerImage: await getSetting("costPerImage", DEFAULT_SETTINGS.costPerImage),
+    costPerDocument: await getSetting("costPerDocument", DEFAULT_SETTINGS.costPerDocument),
   };
 
   return NextResponse.json(settings);
@@ -95,6 +100,26 @@ export async function PATCH(req: Request) {
   if (typeof body.responseTimeoutSeconds === "number") {
     await setSetting("responseTimeoutSeconds", body.responseTimeoutSeconds);
     changed.push("responseTimeoutSeconds");
+  }
+  if (typeof body.allowSignups === "boolean") {
+    await setSetting("allowSignups", body.allowSignups);
+    changed.push("allowSignups");
+  }
+  if (typeof body.maintenanceMode === "boolean") {
+    await setSetting("maintenanceMode", body.maintenanceMode);
+    changed.push("maintenanceMode");
+  }
+  if (typeof body.costPerChat === "number") {
+    await setSetting("costPerChat", body.costPerChat);
+    changed.push("costPerChat");
+  }
+  if (typeof body.costPerImage === "number") {
+    await setSetting("costPerImage", body.costPerImage);
+    changed.push("costPerImage");
+  }
+  if (typeof body.costPerDocument === "number") {
+    await setSetting("costPerDocument", body.costPerDocument);
+    changed.push("costPerDocument");
   }
 
   await logAudit(admin.id, "admin.settings.update", "platform", undefined, { changed: changed.join(", ") });

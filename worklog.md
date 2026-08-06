@@ -227,3 +227,38 @@ Stage Summary:
 - Super Admin is no longer duplicated: removed from Settings, consolidated into the standalone Super Admin sidebar section with all 6 sections.
 - AI settings now have proper all settings: API key, base URL, test connection, and a model dropdown that pulls real allowed models from the backend after testing.
 - Next: Phase 2 real auth/payments, Phase 3 SEO/Marketing/YouTube workspaces.
+
+---
+Task ID: 7
+Agent: lead-architect (main)
+Task: Fix fake API key test passing; enhance super admin user management (create/edit/delete) and system settings (platform flags + credit costs wired to real API).
+
+Work Log:
+- **Fixed fake API key test** (`src/app/api/admin/models/test/route.ts`):
+  - Root cause: when the user entered a fake key but the `apiKey` state was empty (e.g. after a save reset), the frontend passed `apiKey: undefined`, and the backend fell back to the SDK which reads the env key and succeeds — masking the invalid key.
+  - Fix: removed the SDK fallback entirely. The test endpoint now ALWAYS uses raw `fetch` with the provided key (body override > saved key). If no key exists anywhere, it returns 400 "No API key configured".
+  - Added explicit 401/403 detection: when the backend rejects the key, every model is marked unavailable with "Invalid API key (401)".
+  - Added an `invalidKey` flag in the response: true when all non-auto models return 401, so the frontend shows a clear toast "Invalid API key — all models rejected (401)".
+  - Verified: `curl -X POST .../models/test -d '{"apiKey":"fake-key-12345"}'` → all 4 real models return "Invalid API key (401)", `invalidKey: true`, `availableCount: 1` (only auto).
+- **Enhanced admin user management**:
+  - `POST /api/admin/users` — create a new user (name, email, plan, credits, isAdmin). Validates email format + duplicate check.
+  - `PATCH /api/admin/users/:id` — now supports `name`, `email` (with duplicate check), `setCredits` (absolute balance), plus existing `plan`, `status`, `grantCredits`, `isAdmin`.
+  - `DELETE /api/admin/users/:id` — permanently delete a user. Prevents self-deletion.
+  - Frontend `UsersSection` rebuilt with: "New user" button → `UserCreateForm` (name, email, plan, credits, admin toggle), per-user edit button → `UserEditForm` (full edit: name, email, plan, status, credits, admin), per-user delete button (with confirm dialog).
+  - Verified: created "QA Test User" via UI, appeared in list (10 users), "User created" toast.
+- **Wired System section to real API** (was demo toasts):
+  - Added `allowSignups`, `maintenanceMode`, `costPerChat`, `costPerImage`, `costPerDocument` to `DEFAULT_SETTINGS`.
+  - Updated `/api/admin/settings` GET + PATCH to handle all 5 new fields.
+  - `SystemSection` now loads settings, has local form state, "Save flags" persists `allowSignups` + `maintenanceMode`, "Save costs" persists `costPerChat` + `costPerImage` + `costPerDocument`.
+  - Verified: "Save flags" → "Platform flags saved" toast; "Save costs" → "Credit costs saved" toast; GET confirms values persisted.
+- Verified with agent-browser:
+  - Fake key test: "Results — 1 available of 5 tested", every real model shows "Invalid API key (401)".
+  - User create: form renders, fill + save → "User created" toast, user appears in list.
+  - System: flags toggle + save → "Platform flags saved"; costs edit + save → "Credit costs saved".
+  - ESLint clean, no runtime errors.
+
+Stage Summary:
+- Fake API key test now correctly fails — no more silent SDK fallback. Invalid keys get 401 and a clear error.
+- Super admin user management is fully functional: create, edit (name/email/plan/status/credits/admin), delete with audit logging.
+- System settings (platform flags + credit economy) are wired to the real API and persist.
+- All 6 admin sections (Overview, Users, AI Models, Security, Performance, System) now work properly with real data.

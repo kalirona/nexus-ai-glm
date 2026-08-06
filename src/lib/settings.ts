@@ -53,6 +53,12 @@ export const DEFAULT_SETTINGS = {
   cacheTtlSeconds: 300,
   maxConcurrentStreams: 50,
   responseTimeoutSeconds: 60,
+  // System / platform flags
+  allowSignups: true,
+  maintenanceMode: false,
+  costPerChat: 1,
+  costPerImage: 8,
+  costPerDocument: 5,
 } as const;
 
 export type PlatformSettings = typeof DEFAULT_SETTINGS;

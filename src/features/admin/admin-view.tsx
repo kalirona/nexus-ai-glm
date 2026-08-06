@@ -9,6 +9,7 @@ import {
   Lock,
   Gauge,
   Plus,
+  Trash2,
   Check,
   X,
   Loader2,
@@ -77,6 +78,11 @@ interface PlatformSettings {
   cacheTtlSeconds: number;
   maxConcurrentStreams: number;
   responseTimeoutSeconds: number;
+  allowSignups: boolean;
+  maintenanceMode: boolean;
+  costPerChat: number;
+  costPerImage: number;
+  costPerDocument: number;
 }
 
 interface ModelInfo {
@@ -276,6 +282,8 @@ function UsersSection() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<AdminUser | null>(null);
 
   const { data: users = [] } = useQuery<AdminUser[]>({
     queryKey: ["admin-users", search, statusFilter],
@@ -298,14 +306,41 @@ function UsersSection() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const deleteUser = useMutation({
+    mutationFn: (id: string) => api(`/api/admin/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+      toast.success("User deleted");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const statusColor: Record<string, string> = {
     active: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
     suspended: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
     banned: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
   };
 
+  if (showCreate) {
+    return <UserCreateForm onClose={() => setShowCreate(false)} onSaved={() => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+      setShowCreate(false);
+    }} />;
+  }
+
+  if (editing) {
+    return <UserEditForm user={editing} onClose={() => setEditing(null)} onSaved={() => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+      setEditing(null);
+    }} />;
+  }
+
   return (
     <div className="space-y-3">
+      {/* Toolbar */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -327,8 +362,12 @@ function UsersSection() {
             <SelectItem value="banned">Banned</SelectItem>
           </SelectContent>
         </Select>
+        <Button onClick={() => setShowCreate(true)} className="gap-2 shrink-0" size="sm">
+          <Plus className="h-4 w-4" /> New user
+        </Button>
       </div>
 
+      {/* User list */}
       <Card className="overflow-hidden">
         <div className="divide-y">
           {users.length === 0 ? (
@@ -407,6 +446,28 @@ function UsersSection() {
                       <Unlock className="h-3 w-3" />
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-[11px]"
+                    onClick={() => setEditing(u)}
+                    title="Edit user"
+                  >
+                    <SettingsIcon className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-[11px] text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
+                    onClick={() => {
+                      if (confirm(`Delete ${u.name}? This permanently removes the account and all their data.`)) {
+                        deleteUser.mutate(u.id);
+                      }
+                    }}
+                    title="Delete user"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </div>
               </div>
             ))
@@ -417,6 +478,186 @@ function UsersSection() {
         Showing {users.length} user{users.length !== 1 ? "s" : ""} · actions are logged in the audit trail
       </p>
     </div>
+  );
+}
+
+function UserCreateForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ name: "", email: "", plan: "free", credits: 200, isAdmin: false });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!form.name.trim() || !form.email.trim()) {
+      toast.error("Name and email are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/api/admin/users", { method: "POST", body: JSON.stringify(form) });
+      toast.success("User created");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Create failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold sm:text-base">Create new user</h3>
+          <p className="text-xs text-muted-foreground">Add a new account to the platform.</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>Back</Button>
+      </div>
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Full name *</Label>
+            <Input value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} placeholder="Jane Doe" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Email *</Label>
+            <Input value={form.email} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} placeholder="jane@example.com" />
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Plan</Label>
+            <Select value={form.plan} onValueChange={(v) => setForm((s) => ({ ...s, plan: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="free">Free</SelectItem>
+                <SelectItem value="starter">Starter</SelectItem>
+                <SelectItem value="pro">Pro</SelectItem>
+                <SelectItem value="agency">Agency</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Starting credits</Label>
+            <Input type="number" value={form.credits} onChange={(e) => setForm((s) => ({ ...s, credits: Number(e.target.value) }))} />
+          </div>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div>
+            <p className="text-sm font-medium">Super admin access</p>
+            <p className="text-xs text-muted-foreground">Grant platform admin privileges</p>
+          </div>
+          <Switch checked={form.isAdmin} onCheckedChange={(v) => setForm((s) => ({ ...s, isAdmin: v }))} />
+        </div>
+      </div>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={save} disabled={saving} size="sm" className="gap-2">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          Create user
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function UserEditForm({ user, onClose, onSaved }: { user: AdminUser; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    name: user.name,
+    email: user.email,
+    plan: user.plan,
+    status: user.status,
+    setCredits: user.credits,
+    isAdmin: user.isAdmin,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          plan: form.plan,
+          status: form.status,
+          setCredits: form.setCredits,
+          isAdmin: form.isAdmin,
+        }),
+      });
+      toast.success("User updated");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold sm:text-base">Edit {user.name}</h3>
+          <p className="text-xs text-muted-foreground">{user.email}</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>Back</Button>
+      </div>
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Full name</Label>
+            <Input value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Email</Label>
+            <Input value={form.email} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} />
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Plan</Label>
+            <Select value={form.plan} onValueChange={(v) => setForm((s) => ({ ...s, plan: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="free">Free</SelectItem>
+                <SelectItem value="starter">Starter</SelectItem>
+                <SelectItem value="pro">Pro</SelectItem>
+                <SelectItem value="agency">Agency</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Select value={form.status} onValueChange={(v) => setForm((s) => ({ ...s, status: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="banned">Banned</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Credit balance</Label>
+          <Input type="number" value={form.setCredits} onChange={(e) => setForm((s) => ({ ...s, setCredits: Number(e.target.value) }))} />
+        </div>
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div>
+            <p className="text-sm font-medium">Super admin access</p>
+            <p className="text-xs text-muted-foreground">Grant platform admin privileges</p>
+          </div>
+          <Switch checked={form.isAdmin} onCheckedChange={(v) => setForm((s) => ({ ...s, isAdmin: v }))} />
+        </div>
+      </div>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={save} disabled={saving} size="sm" className="gap-2">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Save changes
+        </Button>
+      </div>
+    </Card>
   );
 }
 
@@ -478,20 +719,32 @@ function ModelsSection() {
         allowed: string[];
         availableCount: number;
         total: number;
+        invalidKey?: boolean;
       }>("/api/admin/models/test", {
         method: "POST",
         body: JSON.stringify({
+          // Always pass the input key if present — even if it's wrong, that's
+          // the whole point of testing. The backend uses it directly (no SDK
+          // fallback) so a fake key will get 401 and fail.
           apiKey: apiKey || undefined,
           baseUrl: effectiveBaseUrl || undefined,
         }),
       });
       setTestResults(res.results);
       setAllowedModels(res.allowed);
-      // Auto-enable all available models
-      await api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ enabledModels: res.allowed }) });
-      qc.invalidateQueries({ queryKey: ["admin-models"] });
-      qc.invalidateQueries({ queryKey: ["admin-settings"] });
-      toast.success(`Connection OK — ${res.availableCount} of ${res.total} models available`);
+
+      if (res.invalidKey) {
+        // Every model returned 401 — the key is invalid
+        toast.error("Invalid API key — all models rejected the request (401). Check your key and try again.");
+      } else if (res.availableCount === 0) {
+        toast.error("Connection failed — no models available. Check the base URL and network.");
+      } else {
+        // Auto-enable all available models
+        await api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ enabledModels: res.allowed }) });
+        qc.invalidateQueries({ queryKey: ["admin-models"] });
+        qc.invalidateQueries({ queryKey: ["admin-settings"] });
+        toast.success(`Connection OK — ${res.availableCount} of ${res.total} models available`);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Connection failed");
     } finally {
@@ -899,6 +1152,65 @@ function PerformanceSection() {
 // SYSTEM
 // ===========================================================================
 function SystemSection() {
+  const qc = useQueryClient();
+  const { data: settings } = useQuery<PlatformSettings>({
+    queryKey: ["admin-settings"],
+    queryFn: () => api<PlatformSettings>("/api/admin/settings"),
+  });
+
+  const [form, setForm] = useState<Partial<PlatformSettings>>({});
+  const [savingFlags, setSavingFlags] = useState(false);
+  const [savingCosts, setSavingCosts] = useState(false);
+
+  const merged = { ...settings, ...form } as PlatformSettings;
+
+  const saveFlags = async () => {
+    setSavingFlags(true);
+    try {
+      await api("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ allowSignups: merged.allowSignups, maintenanceMode: merged.maintenanceMode }),
+      });
+      qc.invalidateQueries({ queryKey: ["admin-settings"] });
+      setForm((s) => ({ ...s, allowSignups: undefined, maintenanceMode: undefined }));
+      toast.success("Platform flags saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingFlags(false);
+    }
+  };
+
+  const saveCosts = async () => {
+    setSavingCosts(true);
+    try {
+      await api("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          costPerChat: merged.costPerChat,
+          costPerImage: merged.costPerImage,
+          costPerDocument: merged.costPerDocument,
+        }),
+      });
+      qc.invalidateQueries({ queryKey: ["admin-settings"] });
+      setForm((s) => ({ ...s, costPerChat: undefined, costPerImage: undefined, costPerDocument: undefined }));
+      toast.success("Credit costs saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingCosts(false);
+    }
+  };
+
+  const bool = (key: keyof PlatformSettings) => ({
+    checked: merged[key] as boolean,
+    onCheckedChange: (v: boolean) => setForm((s) => ({ ...s, [key]: v })),
+  });
+  const num = (key: keyof PlatformSettings) => ({
+    value: merged[key] as number,
+    onChange: (v: number) => setForm((s) => ({ ...s, [key]: v })),
+  });
+
   return (
     <div className="space-y-4">
       <Card className="p-4 sm:p-5">
@@ -908,9 +1220,15 @@ function SystemSection() {
         </div>
         <p className="mb-4 text-xs text-muted-foreground">Global controls that affect every user on the platform.</p>
         <div className="space-y-4">
-          <ToggleRow label="Allow new signups" desc="When disabled, new users cannot create accounts" checked={true} onCheckedChange={() => toast.info("Flag updated (demo)")} />
+          <ToggleRow label="Allow new signups" desc="When disabled, new users cannot create accounts" {...bool("allowSignups")} />
           <Separator />
-          <ToggleRow label="Maintenance mode" desc="Show a maintenance banner and block non-admin access" checked={false} onCheckedChange={() => toast.info("Flag updated (demo)")} />
+          <ToggleRow label="Maintenance mode" desc="Show a maintenance banner and block non-admin access" {...bool("maintenanceMode")} />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button onClick={saveFlags} disabled={savingFlags} size="sm" className="gap-2">
+            {savingFlags ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Save flags
+          </Button>
         </div>
       </Card>
 
@@ -923,19 +1241,22 @@ function SystemSection() {
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Cost per chat message</Label>
-            <Input type="number" defaultValue={1} />
+            <Input type="number" {...num("costPerChat")} onChange={(e) => num("costPerChat").onChange(Number(e.target.value))} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Cost per image</Label>
-            <Input type="number" defaultValue={8} />
+            <Input type="number" {...num("costPerImage")} onChange={(e) => num("costPerImage").onChange(Number(e.target.value))} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Cost per document</Label>
-            <Input type="number" defaultValue={5} />
+            <Input type="number" {...num("costPerDocument")} onChange={(e) => num("costPerDocument").onChange(Number(e.target.value))} />
           </div>
         </div>
         <div className="mt-4 flex justify-end">
-          <Button size="sm" onClick={() => toast.success("Credit costs updated (demo)")}>Save costs</Button>
+          <Button onClick={saveCosts} disabled={savingCosts} size="sm" className="gap-2">
+            {savingCosts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Save costs
+          </Button>
         </div>
       </Card>
 
