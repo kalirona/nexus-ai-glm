@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
+import { AI_PROVIDERS } from "@/lib/constants";
 import {
   Shield,
   Cpu,
@@ -64,10 +65,12 @@ const SECTIONS: { id: Section; label: string; icon: typeof Cpu; desc: string }[]
 ];
 
 interface PlatformSettings {
+  providerId: string;
   providerKey: string;
   providerKeyMasked: string;
   baseUrl: string;
   enabledModels: string[];
+  customModels: CustomModel[];
   rateLimitPerMin: number;
   rateLimitPerDay: number;
   ipAllowlist: string;
@@ -93,6 +96,11 @@ interface ModelInfo {
   context: string;
   speed: string;
   enabled: boolean;
+  kind?: "builtin" | "custom";
+  baseUrl?: string;
+  provider?: string;
+  modelId?: string;
+  apiKeyMasked?: string;
 }
 
 interface TestResult {
@@ -101,6 +109,19 @@ interface TestResult {
   available: boolean;
   latencyMs: number;
   error?: string;
+}
+
+interface CustomModel {
+  id: string;
+  name: string;
+  modelId: string;
+  baseUrl: string;
+  apiKey: string;
+  apiKeyMasked: string;
+  provider: string;
+  description?: string;
+  context?: string;
+  enabled: boolean;
 }
 
 interface AdminStats {
@@ -662,16 +683,18 @@ function UserEditForm({ user, onClose, onSaved }: { user: AdminUser; onClose: ()
 }
 
 // ===========================================================================
-// AI MODELS — provider key + base URL + test connection + model dropdown
+// AI MODELS — provider selection, API key, test connection, custom models
 // ===========================================================================
 function ModelsSection() {
   const qc = useQueryClient();
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResults, setTestResults] = useState<TestResult[] | null>(null);
   const [allowedModels, setAllowedModels] = useState<string[] | null>(null);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [editingCustom, setEditingCustom] = useState<CustomModel | null>(null);
+  const [perModelTest, setPerModelTest] = useState<Record<string, TestResult>>({});
 
   const { data: settings } = useQuery<PlatformSettings>({
     queryKey: ["admin-settings"],
@@ -683,32 +706,39 @@ function ModelsSection() {
     queryFn: () => api("/api/admin/models"),
   });
 
-  // Sync base URL when settings load
-  const effectiveBaseUrl = baseUrl || settings?.baseUrl || "";
+  const selectedProvider = AI_PROVIDERS.find((p) => p.id === (settings?.providerId ?? "zai"));
+
+  // ---- Provider + key save ----
+  const saveProvider = useMutation({
+    mutationFn: (providerId: string) =>
+      api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ providerId }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-settings"] });
+      toast.success("Provider switched — base URL updated");
+    },
+  });
 
   const saveKey = useMutation({
     mutationFn: () =>
-      api("/api/admin/settings", {
-        method: "PATCH",
-        body: JSON.stringify({ providerKey: apiKey, baseUrl: effectiveBaseUrl }),
-      }),
+      api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ providerKey: apiKey }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-settings"] });
       setApiKey("");
-      toast.success("API key & base URL saved");
+      toast.success("API key saved");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const saveBaseUrl = useMutation({
-    mutationFn: () =>
-      api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ baseUrl: effectiveBaseUrl }) }),
+    mutationFn: (baseUrl: string) =>
+      api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ baseUrl }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-settings"] });
       toast.success("Base URL saved");
     },
   });
 
+  // ---- Test all built-in models ----
   const testConnection = async () => {
     setTesting(true);
     setTestResults(null);
@@ -722,24 +752,16 @@ function ModelsSection() {
         invalidKey?: boolean;
       }>("/api/admin/models/test", {
         method: "POST",
-        body: JSON.stringify({
-          // Always pass the input key if present — even if it's wrong, that's
-          // the whole point of testing. The backend uses it directly (no SDK
-          // fallback) so a fake key will get 401 and fail.
-          apiKey: apiKey || undefined,
-          baseUrl: effectiveBaseUrl || undefined,
-        }),
+        body: JSON.stringify({ apiKey: apiKey || undefined }),
       });
       setTestResults(res.results);
       setAllowedModels(res.allowed);
 
       if (res.invalidKey) {
-        // Every model returned 401 — the key is invalid
-        toast.error("Invalid API key — all models rejected the request (401). Check your key and try again.");
+        toast.error("Invalid API key — all models rejected (401). Check your key and try again.");
       } else if (res.availableCount === 0) {
         toast.error("Connection failed — no models available. Check the base URL and network.");
       } else {
-        // Auto-enable all available models
         await api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ enabledModels: res.allowed }) });
         qc.invalidateQueries({ queryKey: ["admin-models"] });
         qc.invalidateQueries({ queryKey: ["admin-settings"] });
@@ -752,6 +774,30 @@ function ModelsSection() {
     }
   };
 
+  // ---- Test a single custom model ----
+  const testSingleModel = async (model: { id: string; name: string; modelId?: string; baseUrl?: string; kind?: string }) => {
+    setPerModelTest((s) => ({ ...s, [model.id]: { id: model.id, name: model.name, available: false, latencyMs: 0, error: "Testing…" } }));
+    try {
+      const res = await api<{ results: TestResult[]; invalidKey?: boolean }>("/api/admin/models/test", {
+        method: "POST",
+        body: JSON.stringify({ modelId: model.id }),
+      });
+      const result = res.results[0];
+      if (result) {
+        setPerModelTest((s) => ({ ...s, [model.id]: result }));
+        if (result.available) {
+          toast.success(`${model.name}: OK (${result.latencyMs}ms)`);
+        } else {
+          toast.error(`${model.name}: ${result.error || "failed"}`);
+        }
+      }
+    } catch (e) {
+      setPerModelTest((s) => ({ ...s, [model.id]: { id: model.id, name: model.name, available: false, latencyMs: 0, error: e instanceof Error ? e.message : "failed" } }));
+      toast.error(e instanceof Error ? e.message : "Test failed");
+    }
+  };
+
+  // ---- Toggle model ----
   const toggleModel = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => {
       const current = settings?.enabledModels ?? [];
@@ -764,46 +810,98 @@ function ModelsSection() {
     },
   });
 
+  // ---- Custom model CRUD ----
+  const saveCustomModels = useMutation({
+    mutationFn: (models: CustomModel[]) =>
+      api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ customModels: models }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-settings"] });
+      qc.invalidateQueries({ queryKey: ["admin-models"] });
+    },
+  });
+
+  const deleteCustomModel = (id: string) => {
+    const current = settings?.customModels ?? [];
+    saveCustomModels.mutate(current.filter((m) => m.id !== id));
+    toast.success("Custom model deleted");
+  };
+
+  const builtinModels = (modelsData?.models ?? []).filter((m) => m.kind !== "custom");
+  const customModels = (modelsData?.models ?? []).filter((m) => m.kind === "custom");
+
+  if (showCustomForm || editingCustom) {
+    return (
+      <CustomModelForm
+        existing={editingCustom}
+        onClose={() => { setShowCustomForm(false); setEditingCustom(null); }}
+        onSave={(model) => {
+          const current = settings?.customModels ?? [];
+          const idx = current.findIndex((m) => m.id === model.id);
+          const next = idx >= 0 ? current.map((m) => (m.id === model.id ? model : m)) : [...current, model];
+          saveCustomModels.mutate(next, { onSuccess: () => toast.success(editingCustom ? "Custom model updated" : "Custom model added") });
+          setShowCustomForm(false);
+          setEditingCustom(null);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {/* Provider key + base URL */}
+      {/* Provider selection + API key */}
       <Card className="p-4 sm:p-5">
         <div className="mb-1 flex items-center gap-2">
           <Key className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold sm:text-base">AI Provider Configuration</h3>
         </div>
         <p className="mb-4 text-xs text-muted-foreground">
-          Configure the API key and base URL used by the platform. Test the connection to pull the real list of allowed models.
+          Select a provider to auto-configure the base URL, then enter your API key. Test the connection to pull available models.
         </p>
 
-        {/* Base URL */}
+        {/* Provider selector */}
+        <div className="mb-4 space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Provider</Label>
+          <Select
+            value={settings?.providerId ?? "zai"}
+            onValueChange={(v) => saveProvider.mutate(v)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AI_PROVIDERS.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-[10px] text-muted-foreground">{p.description}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Base URL — auto-filled, editable for custom */}
         <div className="mb-3 space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Base URL</Label>
+          <Label className="text-xs text-muted-foreground">
+            Base URL {settings?.providerId === "custom" && "(required)"}
+          </Label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
               <Link2 className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                value={effectiveBaseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://api.z.ai/api/paas/v4"
+                value={settings?.baseUrl ?? ""}
+                onChange={(e) => saveBaseUrl.mutate(e.target.value)}
+                placeholder="https://api.example.com/v1"
                 className="pl-8 font-mono text-xs"
               />
             </div>
-            <Button
-              onClick={() => saveBaseUrl.mutate()}
-              disabled={!baseUrl || saveBaseUrl.isPending}
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-            >
-              Save URL
-            </Button>
           </div>
         </div>
 
         {/* API key */}
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">API Key</Label>
+          <Label className="text-xs text-muted-foreground">{selectedProvider?.keyLabel ?? "API Key"}</Label>
           {settings?.providerKeyMasked && (
             <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
               <Check className="h-4 w-4 text-emerald-500" />
@@ -817,7 +915,7 @@ function ModelsSection() {
                 type={showKey ? "text" : "password"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your API key…"
+                placeholder={selectedProvider?.keyPlaceholder ?? "Paste your API key…"}
                 className="pr-10"
               />
               <button
@@ -831,55 +929,32 @@ function ModelsSection() {
             <Button
               onClick={() => saveKey.mutate()}
               disabled={!apiKey.trim() || saveKey.isPending}
+              variant="outline"
               className="gap-2 shrink-0"
               size="sm"
             >
               {saveKey.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Save key
             </Button>
+            <Button
+              onClick={testConnection}
+              disabled={testing}
+              className="gap-2 shrink-0"
+              size="sm"
+            >
+              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {testing ? "Testing…" : "Test & pull"}
+            </Button>
           </div>
-        </div>
-      </Card>
-
-      {/* Test connection + pull models */}
-      <Card className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold sm:text-base">Test connection & pull models</h3>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Probes the backend with a tiny request per model. Available models appear in the dropdown below and are auto-enabled.
+          {selectedProvider?.docsUrl && (
+            <p className="pt-1 text-[11px] text-muted-foreground">
+              Get your API key from{" "}
+              <a href={selectedProvider.docsUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                {selectedProvider.name} ↗
+              </a>
             </p>
-          </div>
-          <Button onClick={testConnection} disabled={testing} className="gap-2 shrink-0" size="sm">
-            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {testing ? "Testing…" : "Test & pull"}
-          </Button>
+          )}
         </div>
-
-        {/* Allowed models dropdown — appears after a successful test */}
-        {allowedModels && (
-          <div className="mt-4 space-y-2">
-            <Label className="text-xs text-muted-foreground">Allowed models for this API key</Label>
-            <Select defaultValue="">
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={`${allowedModels.length} models available`} />
-              </SelectTrigger>
-              <SelectContent>
-                {allowedModels.map((id) => {
-                  const m = (modelsData?.models ?? []).find((x) => x.id === id);
-                  return (
-                    <SelectItem key={id} value={id}>
-                      {m?.name ?? id} {id === "auto" ? "· router" : `· ${m?.context ?? ""}`}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
 
         {/* Test results */}
         {testResults && (
@@ -896,17 +971,9 @@ function ModelsSection() {
                     r.available ? "border-emerald-500/30 bg-emerald-500/5" : "border-rose-500/30 bg-rose-500/5"
                   )}
                 >
-                  {r.available ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-500" />
-                  ) : (
-                    <X className="h-3.5 w-3.5 text-rose-500" />
-                  )}
+                  {r.available ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <X className="h-3.5 w-3.5 text-rose-500" />}
                   <span className="flex-1 truncate font-medium">{r.name}</span>
-                  {r.available ? (
-                    <span className="text-muted-foreground">{r.latencyMs}ms</span>
-                  ) : (
-                    <span className="truncate text-rose-400" title={r.error}>{r.error?.slice(0, 30)}</span>
-                  )}
+                  {r.available ? <span className="text-muted-foreground">{r.latencyMs}ms</span> : <span className="truncate text-rose-400" title={r.error}>{r.error?.slice(0, 30)}</span>}
                 </div>
               ))}
             </div>
@@ -914,29 +981,18 @@ function ModelsSection() {
         )}
       </Card>
 
-      {/* Model catalog */}
+      {/* Built-in model catalog */}
       <Card className="p-4 sm:p-5">
         <div className="mb-1 flex items-center gap-2">
           <Cpu className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold sm:text-base">Model catalog</h3>
+          <Badge variant="outline" className="ml-auto text-[10px]">{builtinModels.length} built-in</Badge>
         </div>
-        <p className="mb-4 text-xs text-muted-foreground">
-          Enable or disable models available to users across chat, documents and agents.
-        </p>
-
+        <p className="mb-4 text-xs text-muted-foreground">Enable or disable models available to users.</p>
         <div className="space-y-2">
-          {(modelsData?.models ?? []).map((m) => (
-            <div
-              key={m.id}
-              className={cn(
-                "flex items-center gap-3 rounded-lg border p-3 transition-colors",
-                m.enabled ? "bg-card" : "bg-muted/20 opacity-70"
-              )}
-            >
-              <div className={cn(
-                "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
-                m.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-              )}>
+          {builtinModels.map((m) => (
+            <div key={m.id} className={cn("flex items-center gap-3 rounded-lg border p-3 transition-colors", m.enabled ? "bg-card" : "bg-muted/20 opacity-70")}>
+              <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", m.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
                 <Sparkles className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
@@ -944,20 +1000,223 @@ function ModelsSection() {
                   <p className="truncate text-sm font-medium">{m.name}</p>
                   <Badge variant="outline" className="text-[10px]">{m.badge}</Badge>
                 </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {m.description} · {m.context} context · {m.speed}
-                </p>
+                <p className="truncate text-xs text-muted-foreground">{m.description} · {m.context}</p>
               </div>
-              <Switch
-                checked={m.enabled}
-                onCheckedChange={(v) => toggleModel.mutate({ id: m.id, enabled: v })}
-                aria-label={`Toggle ${m.name}`}
-              />
+              <Switch checked={m.enabled} onCheckedChange={(v) => toggleModel.mutate({ id: m.id, enabled: v })} aria-label={`Toggle ${m.name}`} />
             </div>
           ))}
         </div>
       </Card>
+
+      {/* Custom models */}
+      <Card className="p-4 sm:p-5">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Plus className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold sm:text-base">Custom models</h3>
+            <Badge variant="outline" className="text-[10px]">{customModels.length}</Badge>
+          </div>
+          <Button onClick={() => setShowCustomForm(true)} size="sm" className="gap-2">
+            <Plus className="h-4 w-4" /> Add model
+          </Button>
+        </div>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Add custom OpenAI-compatible models with their own endpoint, API key and model ID. Each model can be tested independently.
+        </p>
+
+        {customModels.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-xl bg-muted">
+              <Cpu className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground">No custom models yet. Add one to use any OpenAI-compatible endpoint.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {customModels.map((m) => {
+              const test = perModelTest[m.id];
+              return (
+                <div key={m.id} className={cn("flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center", m.enabled ? "bg-card" : "bg-muted/20 opacity-70")}>
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", m.enabled ? "bg-violet-500/10 text-violet-500" : "bg-muted text-muted-foreground")}>
+                      <Cpu className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium">{m.name}</p>
+                        <Badge variant="outline" className="text-[10px] capitalize">{m.provider}</Badge>
+                        {test && (
+                          <Badge className={cn("text-[10px]", test.available ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>
+                            {test.available ? `${test.latencyMs}ms` : "fail"}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground font-mono">{m.modelId}</p>
+                      <p className="truncate text-[10px] text-muted-foreground/70 font-mono">{m.baseUrl}</p>
+                      {m.apiKeyMasked && <p className="truncate text-[10px] text-muted-foreground/70">key: {m.apiKeyMasked}</p>}
+                      {test?.error && test.error !== "Testing…" && <p className="truncate text-[10px] text-rose-400">{test.error}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 sm:ml-auto">
+                    <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-[11px]" onClick={() => testSingleModel(m)} disabled={perModelTest[m.id]?.error === "Testing…"}>
+                      {perModelTest[m.id]?.error === "Testing…" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                      Test
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => {
+                      const cm = settings?.customModels?.find((x) => x.id === m.id);
+                      if (cm) setEditingCustom(cm);
+                    }}>
+                      <SettingsIcon className="h-3 w-3" />
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-500/10 dark:text-rose-400" onClick={() => deleteCustomModel(m.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                    <Switch
+                      checked={m.enabled}
+                      onCheckedChange={(v) => {
+                        // Toggle by updating the customModels array
+                        const current = settings?.customModels ?? [];
+                        const next = current.map((x) => (x.id === m.id ? { ...x, enabled: v } : x));
+                        saveCustomModels.mutate(next);
+                      }}
+                      aria-label={`Toggle ${m.name}`}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
     </div>
+  );
+}
+
+// ---- Custom model add/edit form ----
+function CustomModelForm({
+  existing,
+  onClose,
+  onSave,
+}: {
+  existing: CustomModel | null;
+  onClose: () => void;
+  onSave: (model: CustomModel) => void;
+}) {
+  const [form, setForm] = useState({
+    id: existing?.id ?? "",
+    name: existing?.name ?? "",
+    modelId: existing?.modelId ?? "",
+    baseUrl: existing?.baseUrl ?? "",
+    apiKey: "", // raw key only entered on create/edit
+    provider: existing?.provider ?? "custom",
+    description: existing?.description ?? "",
+    context: existing?.context ?? "",
+    enabled: existing?.enabled ?? true,
+  });
+  const [showKey, setShowKey] = useState(false);
+
+  const save = () => {
+    if (!form.name.trim() || !form.modelId.trim() || !form.baseUrl.trim()) {
+      toast.error("Name, model ID and base URL are required");
+      return;
+    }
+    onSave({
+      ...form,
+      id: form.id || `custom-${Date.now()}`,
+      apiKey: form.apiKey, // empty = keep existing (backend preserves)
+      apiKeyMasked: form.apiKey ? form.apiKey.slice(0, 6) + "••••••••" + form.apiKey.slice(-4) : existing?.apiKeyMasked ?? "",
+    });
+  };
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold sm:text-base">{existing ? "Edit custom model" : "Add custom model"}</h3>
+          <p className="text-xs text-muted-foreground">Configure an OpenAI-compatible model with its own endpoint and key.</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>Back</Button>
+      </div>
+
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Display name *</Label>
+            <Input value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} placeholder="e.g. GPT-4o" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Model ID * <span className="text-muted-foreground/60">(sent to provider)</span></Label>
+            <Input value={form.modelId} onChange={(e) => setForm((s) => ({ ...s, modelId: e.target.value }))} placeholder="e.g. gpt-4o, anthropic/claude-3.5-sonnet" className="font-mono text-xs" />
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Base URL *</Label>
+            <div className="relative">
+              <Link2 className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={form.baseUrl} onChange={(e) => setForm((s) => ({ ...s, baseUrl: e.target.value }))} placeholder="https://api.openai.com/v1" className="pl-8 font-mono text-xs" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Provider</Label>
+            <Select value={form.provider} onValueChange={(v) => setForm((s) => ({ ...s, provider: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {AI_PROVIDERS.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">
+            API Key {existing?.apiKeyMasked && <span className="text-muted-foreground/60">(current: {existing.apiKeyMasked} — leave blank to keep)</span>}
+          </Label>
+          <div className="relative">
+            <Input
+              type={showKey ? "text" : "password"}
+              value={form.apiKey}
+              onChange={(e) => setForm((s) => ({ ...s, apiKey: e.target.value }))}
+              placeholder="Enter API key for this model…"
+              className="pr-10"
+            />
+            <button onClick={() => setShowKey((s) => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label={showKey ? "Hide" : "Show"}>
+              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Description (optional)</Label>
+            <Input value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} placeholder="e.g. Fast multimodal model" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Context window (optional)</Label>
+            <Input value={form.context} onChange={(e) => setForm((s) => ({ ...s, context: e.target.value }))} placeholder="e.g. 128K" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div>
+            <p className="text-sm font-medium">Enabled</p>
+            <p className="text-xs text-muted-foreground">Make this model available to users</p>
+          </div>
+          <Switch checked={form.enabled} onCheckedChange={(v) => setForm((s) => ({ ...s, enabled: v }))} />
+        </div>
+      </div>
+
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={save} size="sm" className="gap-2">
+          <Check className="h-4 w-4" />
+          {existing ? "Save changes" : "Add model"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

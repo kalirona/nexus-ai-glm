@@ -2,24 +2,16 @@ import { db } from "@/lib/db";
 
 /**
  * Platform-wide settings store (key-value, JSON-encoded values).
- * Managed by super admins. Cached in-memory for the request lifetime.
+ * Managed by super admins. Reads directly from the DB on every call to
+ * guarantee consistency across routes (Turbopack may isolate module caches).
  */
 
-const cache = new Map<string, unknown>();
-
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {
-  if (cache.has(key)) return cache.get(key) as T;
   const row = await db.platformSetting.findUnique({ where: { key } });
-  if (!row) {
-    cache.set(key, fallback);
-    return fallback;
-  }
+  if (!row) return fallback;
   try {
-    const parsed = JSON.parse(row.value) as T;
-    cache.set(key, parsed);
-    return parsed;
+    return JSON.parse(row.value) as T;
   } catch {
-    cache.set(key, fallback);
     return fallback;
   }
 }
@@ -31,16 +23,31 @@ export async function setSetting<T>(key: string, value: T): Promise<void> {
     update: { value: json },
     create: { key, value: json },
   });
-  cache.set(key, value);
+}
+
+/** A custom (admin-defined) model with its own endpoint + key. */
+export interface CustomModel {
+  id: string;
+  name: string; // display name
+  modelId: string; // the model ID sent to the provider
+  baseUrl: string; // provider base URL
+  apiKey: string; // masked when returned
+  apiKeyMasked: string;
+  provider: string; // provider id (zai, openrouter, openai, custom, …)
+  description?: string;
+  context?: string;
+  enabled: boolean;
 }
 
 /** Default platform settings. */
 export const DEFAULT_SETTINGS = {
   // AI provider
-  providerKey: "", // saved API key (masked in UI)
+  providerId: "zai", // selected provider (zai | openrouter | openai | deepseek | groq | custom)
+  providerKey: "", // saved API key for the selected provider (masked in UI)
   providerKeyMasked: "",
   baseUrl: "https://api.z.ai/api/paas/v4", // AI provider base URL
   enabledModels: ["auto", "glm-4.6", "glm-4.5", "glm-4.5v", "deepseek-v3"],
+  customModels: [] as CustomModel[], // admin-defined models with their own key/url
   // Security
   rateLimitPerMin: 60,
   rateLimitPerDay: 5000,

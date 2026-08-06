@@ -262,3 +262,38 @@ Stage Summary:
 - Super admin user management is fully functional: create, edit (name/email/plan/status/credits/admin), delete with audit logging.
 - System settings (platform flags + credit economy) are wired to the real API and persist.
 - All 6 admin sections (Overview, Users, AI Models, Security, Performance, System) now work properly with real data.
+
+---
+Task ID: 8
+Agent: lead-architect (main)
+Task: AI provider selection (auto base URL), edit/test API keys per model, add custom models with own name/URL/key, fix settings cache staleness.
+
+Work Log:
+- **Added AI_PROVIDERS catalog** (`src/lib/constants.ts`): 6 providers — Z.ai, OpenRouter, OpenAI, DeepSeek, Groq, Custom — each with id, name, baseUrl, docsUrl, keyLabel, keyPlaceholder, description. Selecting a provider auto-fills its base URL.
+- **Added CustomModel type + customModels setting** (`src/lib/settings.ts`): `CustomModel` interface (id, name, modelId, baseUrl, apiKey, apiKeyMasked, provider, description, context, enabled). Added `providerId` and `customModels[]` to DEFAULT_SETTINGS.
+- **Removed stale in-memory cache** from settings helper — was causing the models route to return empty customModels even after PATCH saved them (Turbopack isolates module caches across routes). Now reads directly from DB on every call for guaranteed consistency.
+- **Rebuilt admin settings API** (`/api/admin/settings`):
+  - GET returns providerId, customModels (keys masked).
+  - PATCH handles: providerId (auto-fills baseUrl from catalog), providerKey (masks + stores), baseUrl, customModels (full replace — preserves existing raw keys when incoming apiKey is empty), plus all existing security/performance/system settings.
+- **Rebuilt models API** (`/api/admin/models`): returns built-in catalog + custom models unified, each tagged `kind: builtin | custom` with baseUrl/provider/modelId/apiKeyMasked for custom.
+- **Rebuilt models test API** (`/api/admin/models/test`): two modes — (1) test ALL built-in models against the selected provider's key+baseUrl, (2) test a SINGLE custom model with its own stored key+baseUrl. Extracted `probeModel()` helper. No SDK fallback — fake keys get 401 and fail.
+- **Rebuilt ModelsSection UI** (`src/features/admin/admin-view.tsx`):
+  - **Provider dropdown**: Z.ai / OpenRouter / OpenAI / DeepSeek / Groq / Custom. Selecting one auto-saves + auto-fills the base URL. Each option shows provider name + description.
+  - **API key field**: label + placeholder adapt to the selected provider (e.g. "Z.ai API Key" / "OpenRouter API Key"). Show/hide toggle. "Save key" button. "Test & pull" button tests all built-in models.
+  - **Base URL**: auto-filled from provider, editable (especially for "custom"). Docs link to provider's API key page.
+  - **Built-in model catalog**: toggle switches per model.
+  - **Custom models section**: "Add model" button → full form (display name, model ID, base URL, provider, API key, description, context, enabled toggle). Each custom model row shows: name, provider badge, test latency badge, model ID, base URL, masked key. Per-row actions: Test (probes that single model with its own key), Edit (full form, key blank = keep existing), Delete, Enable/Disable toggle.
+  - **CustomModelForm**: add/edit with all fields, "leave blank to keep existing key" hint when editing.
+- Verified with agent-browser:
+  - Provider dropdown shows all 6 providers with descriptions.
+  - Switching to OpenRouter auto-updated base URL to `https://openrouter.ai/api/v1`.
+  - "Add model" form has all fields (name, modelId, baseUrl, provider, key, description, context, enabled).
+  - Added "Claude 3.5 Sonnet" custom model → appeared in list with model ID + masked key + "Custom model added" toast.
+  - Per-model "Test" button probed the custom model with its own key → correctly showed "Invalid API key (401)" for the fake test key.
+  - API tests: provider switch auto-fills baseUrl (verified via curl); custom model saved to DB (verified via direct DB query); models list returns custom models (verified after cache fix).
+  - ESLint clean, no runtime errors.
+
+Stage Summary:
+- AI Models section now has proper provider selection (auto base URL), per-provider API key management, test connection (real validation — fake keys fail), and full custom model CRUD (add/edit/delete/test each with its own name, URL, key, model ID).
+- Fixed settings cache staleness that was hiding newly-saved custom models.
+- Architecture: provider catalog is the single source of truth; custom models are independent OpenAI-compatible endpoints with their own credentials.

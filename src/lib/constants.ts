@@ -48,6 +48,69 @@ export const AI_MODELS = [
 
 export type AIModel = (typeof AI_MODELS)[number];
 
+/**
+ * Known AI providers. Selecting one auto-fills the base URL and the
+ * OpenAI-compatible endpoint path. "custom" lets admins enter any URL.
+ */
+export const AI_PROVIDERS = [
+  {
+    id: "zai",
+    name: "Z.ai",
+    baseUrl: "https://api.z.ai/api/paas/v4",
+    docsUrl: "https://docs.z.ai",
+    keyLabel: "Z.ai API Key",
+    keyPlaceholder: "zai-xxxxxxxxxxxxxxxxxxxx",
+    description: "GLM models — GLM-4.6, GLM-4.5, GLM-4.5V, DeepSeek V3",
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    docsUrl: "https://openrouter.ai/keys",
+    keyLabel: "OpenRouter API Key",
+    keyPlaceholder: "sk-or-xxxxxxxxxxxxxxxxxxxx",
+    description: "200+ models — GPT, Claude, Gemini, Llama, Mistral & more",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    baseUrl: "https://api.openai.com/v1",
+    docsUrl: "https://platform.openai.com/api-keys",
+    keyLabel: "OpenAI API Key",
+    keyPlaceholder: "sk-xxxxxxxxxxxxxxxxxxxx",
+    description: "GPT-4o, GPT-4o-mini, o1, o3-mini & more",
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    baseUrl: "https://api.deepseek.com/v1",
+    docsUrl: "https://platform.deepseek.com/api_keys",
+    keyLabel: "DeepSeek API Key",
+    keyPlaceholder: "sk-xxxxxxxxxxxxxxxxxxxx",
+    description: "DeepSeek-V3, DeepSeek-R1 reasoning models",
+  },
+  {
+    id: "groq",
+    name: "Groq",
+    baseUrl: "https://api.groq.com/openai/v1",
+    docsUrl: "https://console.groq.com/keys",
+    keyLabel: "Groq API Key",
+    keyPlaceholder: "gsk_xxxxxxxxxxxxxxxxxxxx",
+    description: "Ultra-fast inference — Llama, Mixtral, Gemma",
+  },
+  {
+    id: "custom",
+    name: "Custom (OpenAI-compatible)",
+    baseUrl: "",
+    docsUrl: "",
+    keyLabel: "API Key",
+    keyPlaceholder: "Enter your API key",
+    description: "Any OpenAI-compatible endpoint — enter your own base URL",
+  },
+] as const;
+
+export type AIProvider = (typeof AI_PROVIDERS)[number];
+
 export const IMAGE_SIZES = [
   { id: "1024x1024", label: "Square", ratio: "1:1", use: "Logos · Avatars · Social" },
   { id: "1344x768", label: "Landscape", ratio: "16:9", use: "Blogs · Headers · Ads" },

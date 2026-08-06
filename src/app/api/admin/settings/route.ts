@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, logAudit } from "@/lib/auth";
-import { getSetting, setSetting, DEFAULT_SETTINGS, type PlatformSettings } from "@/lib/settings";
+import { getSetting, setSetting, DEFAULT_SETTINGS, type PlatformSettings, type CustomModel } from "@/lib/settings";
+import { AI_PROVIDERS } from "@/lib/constants";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,11 +11,20 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   await requireAdmin();
 
+  // Load custom models and mask their keys
+  const customModelsRaw = await getSetting<CustomModel[]>("customModels", []);
+  const customModels = customModelsRaw.map((m) => ({
+    ...m,
+    apiKey: "", // never return raw keys
+  }));
+
   const settings: PlatformSettings = {
+    providerId: await getSetting("providerId", DEFAULT_SETTINGS.providerId),
     providerKey: "", // never return the raw key
     providerKeyMasked: await getSetting("providerKeyMasked", ""),
     baseUrl: await getSetting("baseUrl", DEFAULT_SETTINGS.baseUrl),
     enabledModels: await getSetting("enabledModels", DEFAULT_SETTINGS.enabledModels),
+    customModels,
     rateLimitPerMin: await getSetting("rateLimitPerMin", DEFAULT_SETTINGS.rateLimitPerMin),
     rateLimitPerDay: await getSetting("rateLimitPerDay", DEFAULT_SETTINGS.rateLimitPerDay),
     ipAllowlist: await getSetting("ipAllowlist", DEFAULT_SETTINGS.ipAllowlist),
@@ -34,27 +45,70 @@ export async function GET() {
   return NextResponse.json(settings);
 }
 
+function maskKey(key: string): string {
+  if (key.length <= 10) return "••••••••";
+  return key.slice(0, 6) + "••••••••" + key.slice(-4);
+}
+
 /** PATCH /api/admin/settings — update platform settings (admin only). */
 export async function PATCH(req: Request) {
   const admin = await requireAdmin();
   const body = (await req.json().catch(() => ({}))) as Partial<PlatformSettings> & {
-    providerKey?: string; // raw key, only on save
+    providerKey?: string; // raw key for the selected provider
+    customModels?: CustomModel[]; // full custom models array (with raw keys for new/edited)
   };
 
   const changed: string[] = [];
 
-  // Handle API key save — mask it, store raw separately (not returned by GET)
+  // Provider selection — auto-fills baseUrl when a known provider is chosen
+  if (typeof body.providerId === "string") {
+    await setSetting("providerId", body.providerId);
+    const provider = AI_PROVIDERS.find((p) => p.id === body.providerId);
+    if (provider && provider.baseUrl) {
+      await setSetting("baseUrl", provider.baseUrl);
+    }
+    changed.push("providerId");
+  }
+
+  // Handle API key save for the selected provider
   if (typeof body.providerKey === "string" && body.providerKey.trim()) {
     const key = body.providerKey.trim();
-    const masked = key.slice(0, 6) + "••••••••" + key.slice(-4);
     await setSetting("providerKey", key);
-    await setSetting("providerKeyMasked", masked);
+    await setSetting("providerKeyMasked", maskKey(key));
     changed.push("providerKey");
   }
 
+  // Allow explicit baseUrl override (for custom providers)
   if (typeof body.baseUrl === "string") {
     await setSetting("baseUrl", body.baseUrl.trim());
     changed.push("baseUrl");
+  }
+
+  // Custom models — full replace. Mask any new raw keys before storing.
+  if (Array.isArray(body.customModels)) {
+    const existing = await getSetting<CustomModel[]>("customModels", []);
+    const existingMap = new Map(existing.map((m) => [m.id, m]));
+
+    const sanitized: CustomModel[] = body.customModels.map((m) => {
+      // Preserve existing raw key if the incoming key is empty (not changed)
+      const prev = existingMap.get(m.id);
+      let rawKey = m.apiKey;
+      if (!rawKey && prev?.apiKey) rawKey = prev.apiKey; // keep stored key
+      return {
+        id: m.id,
+        name: m.name,
+        modelId: m.modelId,
+        baseUrl: m.baseUrl,
+        apiKey: rawKey,
+        apiKeyMasked: rawKey ? maskKey(rawKey) : prev?.apiKeyMasked ?? "",
+        provider: m.provider,
+        description: m.description ?? "",
+        context: m.context ?? "",
+        enabled: m.enabled ?? true,
+      };
+    });
+    await setSetting("customModels", sanitized);
+    changed.push("customModels");
   }
 
   if (Array.isArray(body.enabledModels)) {
@@ -123,6 +177,6 @@ export async function PATCH(req: Request) {
   }
 
   await logAudit(admin.id, "admin.settings.update", "platform", undefined, { changed: changed.join(", ") });
-
+  void db; // keep import for future audit queries
   return NextResponse.json({ ok: true, changed });
 }
