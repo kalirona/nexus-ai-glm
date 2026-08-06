@@ -259,6 +259,75 @@ interface TestResult {
   error?: string;
 }
 
+// Three-layer model registry (Phase 2.8) — replaces the old fetchProviderModels flow.
+interface AiModel {
+  id: string;
+  providerId: string;
+  modelId: string;
+  displayName: string;
+  providerName: string;
+  owner: string | null;
+  category: string | null;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  inputCostPerM: number | null;
+  outputCostPerM: number | null;
+  supportsStreaming: boolean;
+  supportsVision: boolean;
+  supportsFunctionCalling: boolean;
+  supportsJsonMode: boolean;
+  supportsEmbeddings: boolean;
+  supportsAudio: boolean;
+  supportsImages: boolean;
+  supportsVideo: boolean;
+  supportsReasoning: boolean;
+  verificationStatus: string; // unverified | verified | unavailable | deprecated | preview | private | disabled-by-provider
+  enabled: boolean;
+  approved: boolean;
+  isDefault: boolean;
+  defaultCapability: string | null;
+  healthStatus: string; // unknown | healthy | slow | degraded | offline
+  avgLatencyMs: number | null;
+  lastHealthCheck: string | null;
+  lastSyncAt: string | null;
+  lastVerifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RegistryCounts {
+  catalog: number;
+  verified: number;
+  approved: number;
+  healthy: number;
+}
+
+interface RegistryResponse {
+  models: AiModel[];
+  counts: RegistryCounts;
+}
+
+interface SyncReport {
+  providerId: string;
+  providerName: string;
+  catalogModels: number;
+  verified: number;
+  approved: number;
+  newModels: number;
+  updatedModels: number;
+  unavailable: number;
+  deprecated: number;
+  removed: number;
+  duration: number;
+  error?: string;
+}
+
+interface VerifyResult {
+  verified: boolean;
+  latencyMs: number;
+  error?: string;
+}
+
 // ===========================================================================
 // Constants
 // ===========================================================================
@@ -470,6 +539,26 @@ export function AIInfraView() {
 // 1. PROVIDERS
 // ===========================================================================
 
+function statusBadge(status: ConfiguredProvider["status"]) {
+  if (status === "active")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+        <CircleDot className="h-2.5 w-2.5" /> Active
+      </span>
+    );
+  if (status === "inactive")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+        <CircleDot className="h-2.5 w-2.5" /> Inactive
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+      <CircleDot className="h-2.5 w-2.5" /> Unconfigured
+    </span>
+  );
+}
+
 function ProvidersSection({ onOpenModels }: { onOpenModels: (id: string) => void }) {
   const qc = useQueryClient();
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -478,6 +567,13 @@ function ProvidersSection({ onOpenModels }: { onOpenModels: (id: string) => void
   const { data: providers = [], isLoading } = useQuery<ConfiguredProvider[]>({
     queryKey: ["ai-providers"],
     queryFn: () => api<{ providers: ConfiguredProvider[] }>("/api/admin/providers").then((r) => r.providers),
+  });
+
+  // Pull settings so each card can show its existing API key (masked) and
+  // resolve the live "has key" state without waiting on the Credentials tab.
+  const { data: settings } = useQuery<PlatformSettings>({
+    queryKey: ["ai-settings"],
+    queryFn: () => api<PlatformSettings>("/api/admin/settings"),
   });
 
   const patchProvider = useMutation({
@@ -506,31 +602,11 @@ function ProvidersSection({ onOpenModels }: { onOpenModels: (id: string) => void
     }
   };
 
-  const statusBadge = (status: ConfiguredProvider["status"]) => {
-    if (status === "active")
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-          <CircleDot className="h-2.5 w-2.5" /> Active
-        </span>
-      );
-    if (status === "inactive")
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-          <CircleDot className="h-2.5 w-2.5" /> Inactive
-        </span>
-      );
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-        <CircleDot className="h-2.5 w-2.5" /> Unconfigured
-      </span>
-    );
-  };
-
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 9 }).map((_, i) => (
-          <Card key={i} className="h-44 animate-pulse bg-muted/40" />
+          <Card key={i} className="h-64 animate-pulse bg-muted/40" />
         ))}
       </div>
     );
@@ -547,112 +623,23 @@ function ProvidersSection({ onOpenModels }: { onOpenModels: (id: string) => void
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {providers.map((p) => (
-          <Card key={p.id} className="flex flex-col p-4">
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <button
-                  onClick={() => setConfigProvider(p)}
-                  className="flex items-center gap-1.5 text-left hover:underline"
-                >
-                  <h3 className="truncate text-sm font-semibold">{p.name}</h3>
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                </button>
-                <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{p.description}</p>
-              </div>
-              {statusBadge(p.status)}
-            </div>
-
-            {p.baseUrl ? (
-              <div className="mb-2 flex items-center gap-1.5 truncate rounded-md bg-muted/50 px-2 py-1 text-[10px] font-mono text-muted-foreground">
-                <Link2 className="h-3 w-3 shrink-0" />
-                <span className="truncate">{p.baseUrl}</span>
-              </div>
-            ) : (
-              <div className="mb-2 rounded-md bg-muted/50 px-2 py-1 text-[10px] text-muted-foreground">
-                Custom endpoint required
-              </div>
-            )}
-
-            {/* Capabilities */}
-            <div className="mb-3 flex flex-wrap gap-1">
-              {CAPABILITY_ICONS.filter((c) => p.capabilities[c.key]).map((c) => {
-                const Icon = c.icon;
-                return (
-                  <span
-                    key={c.key}
-                    title={c.label}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary"
-                  >
-                    <Icon className="h-3 w-3" />
-                  </span>
-                );
-              })}
-            </div>
-
-            {/* Last test */}
-            <div className="mb-3 flex items-center gap-2 text-[11px]">
-              {p.lastTestedAt ? (
-                <>
-                  {p.lastTestSuccess ? (
-                    <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                      <Check className="h-2.5 w-2.5" /> {p.lastTestLatencyMs ? fmtMs(p.lastTestLatencyMs) : "OK"}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="gap-1 border-rose-500/30 text-rose-600 dark:text-rose-400">
-                      <X className="h-2.5 w-2.5" /> Failed
-                    </Badge>
-                  )}
-                  <span className="text-muted-foreground">{timeAgo(p.lastTestedAt)}</span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">Not tested yet</span>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="mt-auto flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 flex-1 gap-1 text-[11px]"
-                onClick={() => testProvider(p.id)}
-                disabled={testingId === p.id || !p.hasKey}
-                title={!p.hasKey ? "No API key configured" : "Test connection"}
-              >
-                {testingId === p.id ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Zap className="h-3 w-3" />
-                )}
-                Test
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 flex-1 gap-1 text-[11px]"
-                onClick={() => onOpenModels(p.id)}
-                disabled={!p.modelsEndpoint}
-                title={!p.modelsEndpoint ? "Live model listing not supported" : "Browse models"}
-              >
-                <Cpu className="h-3 w-3" />
-                Models
-              </Button>
-              <Switch
-                checked={p.status !== "inactive"}
-                onCheckedChange={(v) =>
-                  patchProvider.mutate({ providerId: p.id, active: v })
-                }
-                title={p.status === "unconfigured" ? "Add a key first" : "Toggle active"}
-                disabled={p.status === "unconfigured"}
-              />
-            </div>
-          </Card>
+          <ProviderCard
+            key={p.id}
+            provider={p}
+            settings={settings}
+            onOpenModels={onOpenModels}
+            onOpenConfig={setConfigProvider}
+            onTestProvider={testProvider}
+            testingId={testingId}
+            onToggleActive={(id, active) => patchProvider.mutate({ providerId: id, active })}
+          />
         ))}
       </div>
 
       {/* Config dialog */}
       <ProviderConfigDialog
         provider={configProvider}
+        settings={settings}
         onClose={() => setConfigProvider(null)}
       />
     </div>
@@ -661,27 +648,287 @@ function ProvidersSection({ onOpenModels }: { onOpenModels: (id: string) => void
 
 function ProviderConfigDialog({
   provider,
+  settings,
   onClose,
 }: {
   provider: ConfiguredProvider | null;
+  settings: PlatformSettings | undefined;
   onClose: () => void;
 }) {
   return (
     <Dialog open={!!provider} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         {provider && (
-          <ProviderConfigForm key={provider.id} provider={provider} onClose={onClose} />
+          <ProviderConfigForm
+            key={provider.id}
+            provider={provider}
+            settings={settings}
+            onClose={onClose}
+          />
         )}
       </DialogContent>
     </Dialog>
   );
 }
 
+/**
+ * Provider card with an inline API key input, editable base URL (for custom
+ * providers), and a "Save & Test" button that writes the key into apiKeys[]
+ * via PATCH /api/admin/settings and then triggers the provider test endpoint.
+ *
+ * The card's local state (key input, base URL, show/hide) is initialised once
+ * from the provider/settings props via a lazy useState — no syncing effect.
+ * When the underlying settings or provider change, react-query re-renders the
+ * card with the new props; the masked-key display is derived (not stored).
+ */
+function ProviderCard({
+  provider,
+  settings,
+  onOpenModels,
+  onOpenConfig,
+  onTestProvider,
+  testingId,
+  onToggleActive,
+}: {
+  provider: ConfiguredProvider;
+  settings: PlatformSettings | undefined;
+  onOpenModels: (id: string) => void;
+  onOpenConfig: (p: ConfiguredProvider) => void;
+  onTestProvider: (id: string) => void;
+  testingId: string | null;
+  onToggleActive: (id: string, active: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const def = AI_PROVIDERS.find((p) => p.id === provider.id);
+
+  // Derive the live key state from settings.apiKeys[] (the masked key returned
+  // by GET /api/admin/settings is the single source of truth).
+  const existingKey = settings?.apiKeys?.find((k) => k.provider === provider.id);
+  const maskedKey = existingKey?.apiKeyMasked ?? provider.apiKeyMasked ?? "";
+  const hasKey = !!(existingKey?.apiKeyMasked || provider.hasKey);
+
+  // Local edits overlay: typed-but-not-yet-saved key + custom base URL.
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const isCustomUrlEditable = !def?.baseUrl || provider.id === "custom";
+  const [baseUrlInput, setBaseUrlInput] = useState(provider.baseUrl ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const hasInput = apiKeyInput.trim().length > 0;
+  const testDisabled = testingId === provider.id || (!hasKey && !hasInput);
+
+  const saveAndTest = async () => {
+    if (!hasInput) return;
+    setSaving(true);
+    try {
+      // 1) Build the next apiKeys[] array — replace any existing entry for this provider.
+      const current = settings?.apiKeys ?? [];
+      const next: ApiKeyConfig[] = current
+        .filter((k) => k.provider !== provider.id)
+        .concat({
+          id: `key-${provider.id}`,
+          label: `${provider.name} Key`,
+          role: "all",
+          provider: provider.id,
+          baseUrl: baseUrlInput || provider.baseUrl,
+          apiKey: apiKeyInput.trim(),
+          apiKeyMasked: "", // backend masks on save
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+        });
+      await api("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ apiKeys: next }),
+      });
+      await qc.invalidateQueries({ queryKey: ["ai-settings"] });
+
+      // 2) Now test the freshly-saved key.
+      const res = await api<TestResult>(`/api/admin/providers/${provider.id}/test`, {
+        method: "POST",
+      });
+      if (res.success) {
+        toast.success(
+          `Key saved · Connection OK · ${res.modelCount} models · ${fmtMs(res.latencyMs)}`
+        );
+      } else {
+        toast.error(`Key saved but test failed: ${res.error || "unknown error"}`);
+      }
+      qc.invalidateQueries({ queryKey: ["ai-providers"] });
+      setApiKeyInput("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save & test failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="flex flex-col p-4">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <button
+            onClick={() => onOpenConfig(provider)}
+            className="flex items-center gap-1.5 text-left hover:underline"
+          >
+            <h3 className="truncate text-sm font-semibold">{provider.name}</h3>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </button>
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{provider.description}</p>
+        </div>
+        {statusBadge(provider.status)}
+      </div>
+
+      {/* Base URL — editable for custom providers, read-only otherwise */}
+      {isCustomUrlEditable ? (
+        <div className="mb-2 space-y-1">
+          <Label className="text-[10px] text-muted-foreground">Base URL</Label>
+          <Input
+            value={baseUrlInput}
+            onChange={(e) => setBaseUrlInput(e.target.value)}
+            placeholder="https://api.example.com/v1"
+            className="h-7 text-[10px] font-mono"
+          />
+        </div>
+      ) : provider.baseUrl ? (
+        <div className="mb-2 flex items-center gap-1.5 truncate rounded-md bg-muted/50 px-2 py-1 text-[10px] font-mono text-muted-foreground">
+          <Link2 className="h-3 w-3 shrink-0" />
+          <span className="truncate">{provider.baseUrl}</span>
+        </div>
+      ) : (
+        <div className="mb-2 rounded-md bg-muted/50 px-2 py-1 text-[10px] text-muted-foreground">
+          Custom endpoint required
+        </div>
+      )}
+
+      {/* Inline API key input with show/hide — replaces the "go to Credentials" hop */}
+      <div className="mb-2 space-y-1">
+        <Label className="text-[10px] text-muted-foreground">API Key</Label>
+        <div className="relative">
+          <Input
+            type={showKey ? "text" : "password"}
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+            placeholder={
+              hasKey
+                ? `Saved: ${maskedKey} — type to replace`
+                : def?.keyPlaceholder ?? "Enter API key"
+            }
+            className="h-7 pr-8 text-[11px] font-mono"
+            autoComplete="off"
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey((v) => !v)}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            tabIndex={-1}
+            aria-label={showKey ? "Hide API key" : "Show API key"}
+          >
+            {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+        {hasKey && !hasInput && (
+          <p className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
+            <Lock className="h-2.5 w-2.5" />
+            <span className="font-mono">{maskedKey}</span>
+          </p>
+        )}
+      </div>
+
+      {/* Capabilities */}
+      <div className="mb-3 flex flex-wrap gap-1">
+        {CAPABILITY_ICONS.filter((c) => provider.capabilities[c.key]).map((c) => {
+          const Icon = c.icon;
+          return (
+            <span
+              key={c.key}
+              title={c.label}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary"
+            >
+              <Icon className="h-3 w-3" />
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Last test */}
+      <div className="mb-3 flex items-center gap-2 text-[11px]">
+        {provider.lastTestedAt ? (
+          <>
+            {provider.lastTestSuccess ? (
+              <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                <Check className="h-2.5 w-2.5" /> {provider.lastTestLatencyMs ? fmtMs(provider.lastTestLatencyMs) : "OK"}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1 border-rose-500/30 text-rose-600 dark:text-rose-400">
+                <X className="h-2.5 w-2.5" /> Failed
+              </Badge>
+            )}
+            <span className="text-muted-foreground">{timeAgo(provider.lastTestedAt)}</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">Not tested yet</span>
+        )}
+      </div>
+
+      {/* Actions — Test is enabled whenever a key is available (saved OR just typed) */}
+      <div className="mt-auto space-y-1.5">
+        {hasInput && (
+          <Button
+            size="sm"
+            className="h-7 w-full gap-1.5 text-[11px]"
+            onClick={saveAndTest}
+            disabled={saving}
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+            Save &amp; Test
+          </Button>
+        )}
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 flex-1 gap-1 text-[11px]"
+            onClick={() => onTestProvider(provider.id)}
+            disabled={testDisabled}
+            title={!hasKey && !hasInput ? "Enter an API key first" : "Test connection"}
+          >
+            {testingId === provider.id ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Zap className="h-3 w-3" />
+            )}
+            Test
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 flex-1 gap-1 text-[11px]"
+            onClick={() => onOpenModels(provider.id)}
+            disabled={!provider.modelsEndpoint}
+            title={!provider.modelsEndpoint ? "Live model listing not supported" : "Browse models"}
+          >
+            <Cpu className="h-3 w-3" />
+            Models
+          </Button>
+          <Switch
+            checked={provider.status !== "inactive"}
+            onCheckedChange={(v) => onToggleActive(provider.id, v)}
+            title={provider.status === "unconfigured" ? "Add a key first" : "Toggle active"}
+            disabled={provider.status === "unconfigured"}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function ProviderConfigForm({
   provider,
+  settings,
   onClose,
 }: {
   provider: ConfiguredProvider;
+  settings: PlatformSettings | undefined;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -695,21 +942,33 @@ function ProviderConfigForm({
     region: provider.region ?? "",
     timeout: provider.timeout ?? 30,
     retryCount: provider.retryCount ?? 2,
+    apiKeyInput: "",
+    baseUrlInput: provider.baseUrl ?? "",
   });
+  const [showKey, setShowKey] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+
+  const existingKey = settings?.apiKeys?.find((k) => k.provider === provider.id);
+  const maskedKey = existingKey?.apiKeyMasked ?? provider.apiKeyMasked ?? "";
+  const isCustomUrlEditable = !def?.baseUrl || provider.id === "custom";
 
   const save = useMutation({
-    mutationFn: () =>
-      api("/api/admin/providers", {
-        method: "PATCH",
-        body: JSON.stringify({
-          providerId: provider.id,
-          orgId: form.orgId,
-          projectId: form.projectId,
-          region: form.region,
-          timeout: Number(form.timeout),
-          retryCount: Number(form.retryCount),
-        }),
-      }),
+    mutationFn: () => {
+      const body: Record<string, unknown> = {
+        providerId: provider.id,
+        orgId: form.orgId,
+        projectId: form.projectId,
+        region: form.region,
+        timeout: Number(form.timeout),
+        retryCount: Number(form.retryCount),
+      };
+      // For custom providers, also persist the edited base URL on the
+      // provider record (so subsequent test/sync calls hit the right URL).
+      if (isCustomUrlEditable && form.baseUrlInput.trim()) {
+        body.baseUrl = form.baseUrlInput.trim();
+      }
+      return api("/api/admin/providers", { method: "PATCH", body: JSON.stringify(body) });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ai-providers"] });
       toast.success("Provider config saved");
@@ -717,6 +976,39 @@ function ProviderConfigForm({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const saveKey = async () => {
+    if (!form.apiKeyInput.trim()) return;
+    setSavingKey(true);
+    try {
+      const current = settings?.apiKeys ?? [];
+      const next: ApiKeyConfig[] = current
+        .filter((k) => k.provider !== provider.id)
+        .concat({
+          id: `key-${provider.id}`,
+          label: `${provider.name} Key`,
+          role: "all",
+          provider: provider.id,
+          baseUrl: form.baseUrlInput || provider.baseUrl,
+          apiKey: form.apiKeyInput.trim(),
+          apiKeyMasked: "",
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+        });
+      await api("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ apiKeys: next }),
+      });
+      qc.invalidateQueries({ queryKey: ["ai-settings"] });
+      qc.invalidateQueries({ queryKey: ["ai-providers"] });
+      toast.success("API key saved");
+      setForm((s) => ({ ...s, apiKeyInput: "" }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingKey(false);
+    }
+  };
 
   const supportsOrg = def?.supportsOrgId;
   const supportsProject = def?.supportsProjectId;
@@ -734,13 +1026,63 @@ function ProviderConfigForm({
         <div className="rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground">
           {provider.description}
         </div>
-        {provider.apiKeyMasked && (
-          <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs">
-            <Lock className="h-3 w-3 text-emerald-500" />
-            <span className="text-muted-foreground">Key:</span>
-            <span className="font-mono">{provider.apiKeyMasked}</span>
+
+        {/* API key section — saved into apiKeys[] via /api/admin/settings */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">API Key</Label>
+          {maskedKey && !form.apiKeyInput && (
+            <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 text-xs">
+              <Lock className="h-3 w-3 text-emerald-500" />
+              <span className="text-muted-foreground">Current:</span>
+              <span className="font-mono">{maskedKey}</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                type={showKey ? "text" : "password"}
+                value={form.apiKeyInput}
+                onChange={(e) => setForm((s) => ({ ...s, apiKeyInput: e.target.value }))}
+                placeholder={maskedKey ? "Type to replace key" : def?.keyPlaceholder ?? "Enter API key"}
+                className="pr-9 font-mono text-xs"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+                aria-label={showKey ? "Hide API key" : "Show API key"}
+              >
+                {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={saveKey}
+              disabled={!form.apiKeyInput.trim() || savingKey}
+            >
+              {savingKey ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              Save key
+            </Button>
+          </div>
+        </div>
+
+        {/* Base URL — editable only for custom providers */}
+        {isCustomUrlEditable && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Base URL</Label>
+            <Input
+              value={form.baseUrlInput}
+              onChange={(e) => setForm((s) => ({ ...s, baseUrlInput: e.target.value }))}
+              placeholder="https://api.example.com/v1"
+              className="font-mono text-xs"
+            />
           </div>
         )}
+
         <Separator />
         {supportsOrg && (
           <div className="space-y-1.5">
@@ -792,7 +1134,7 @@ function ProviderConfigForm({
         </div>
         {!supportsOrg && !supportsProject && !supportsRegion && (
           <p className="text-xs text-muted-foreground">
-            This provider uses only timeout and retry tuning. Add an API key in the Credentials tab.
+            This provider uses only timeout and retry tuning. Use the API key field above.
           </p>
         )}
       </div>
@@ -822,80 +1164,87 @@ function ModelsSection({
 }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
-  const [filterCap, setFilterCap] = useState<string>("all");
-  const [fetchTrigger, setFetchTrigger] = useState(0);
+  const [layer, setLayer] = useState<"catalog" | "verified" | "approved">("catalog");
+  const [syncing, setSyncing] = useState(false);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   const { data: providers = [] } = useQuery<ConfiguredProvider[]>({
     queryKey: ["ai-providers"],
     queryFn: () => api<{ providers: ConfiguredProvider[] }>("/api/admin/providers").then((r) => r.providers),
   });
 
-  const { data: settings } = useQuery<PlatformSettings>({
-    queryKey: ["ai-settings"],
-    queryFn: () => api<PlatformSettings>("/api/admin/settings"),
+  // Auto-pick the first provider if none is selected (computed locally —
+  // no effect needed; the Select reads this value and writes back on change).
+  const effectiveProvider = providerId || providers[0]?.id || "";
+
+  // Three-layer registry — replaces the old fetchProviderModels flow.
+  const { data: registry, isLoading: modelsLoading, error: modelsError } = useQuery<RegistryResponse>({
+    queryKey: ["ai-models-registry", effectiveProvider, layer, search],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (effectiveProvider) params.set("provider", effectiveProvider);
+      if (layer !== "catalog") params.set("layer", layer);
+      if (search.trim()) params.set("q", search.trim());
+      return api<RegistryResponse>(`/api/admin/models/registry?${params.toString()}`);
+    },
+    enabled: !!effectiveProvider,
   });
 
-  // Auto-pick the first provider with a key if none selected (computed locally —
-  // no effect needed; the Select reads this value and writes back on explicit change).
-  const effectiveProvider = providerId || providers.find((p) => p.hasKey)?.id || providers[0]?.id || "";
+  const models = registry?.models ?? [];
+  const counts = registry?.counts ?? { catalog: 0, verified: 0, approved: 0, healthy: 0 };
 
-  const isFetching = fetchTrigger > 0 && !!effectiveProvider;
-  const { data: modelsRes, isLoading: modelsLoading } = useQuery<{ models: LiveModel[]; count?: number; error?: string }>({
-    queryKey: ["ai-provider-models", effectiveProvider, fetchTrigger],
-    queryFn: () => api(`/api/admin/providers/${effectiveProvider}/models`),
-    enabled: isFetching,
-  });
-
-  const models = modelsRes?.models ?? [];
-  const fetchError = modelsRes?.error;
-
-  const filtered = useMemo(() => {
-    let list = models;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
-      );
-    }
-    if (filterCap !== "all") {
-      list = list.filter((m) => m.capabilities?.[filterCap as keyof LiveModelCapabilities]);
-    }
-    return list;
-  }, [models, search, filterCap]);
-
-  const enabledModels = settings?.enabledModels ?? [];
-  const defaultModel = settings?.defaultModel ?? "";
-
-  const toggleEnabled = useMutation({
-    mutationFn: (modelId: string) => {
-      const next = enabledModels.includes(modelId)
-        ? enabledModels.filter((m) => m !== modelId)
-        : [...enabledModels, modelId];
-      return api("/api/admin/settings", {
-        method: "PATCH",
-        body: JSON.stringify({ enabledModels: next }),
+  const syncModels = async () => {
+    if (!effectiveProvider) return;
+    setSyncing(true);
+    try {
+      const report = await api<SyncReport>(`/api/admin/models/sync/${effectiveProvider}`, {
+        method: "POST",
       });
-    },
+      if (report.error) {
+        toast.error(`Sync failed: ${report.error}`);
+      } else {
+        toast.success(
+          `Synced ${report.catalogModels} models · ${report.newModels} new · ${report.updatedModels} updated · ${fmtMs(report.duration)}`
+        );
+      }
+      qc.invalidateQueries({ queryKey: ["ai-models-registry"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const patchModel = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api(`/api/admin/models/registry/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["ai-settings"] });
+      qc.invalidateQueries({ queryKey: ["ai-models-registry"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const setDefault = useMutation({
-    mutationFn: (modelId: string) =>
-      api("/api/admin/settings", {
-        method: "PATCH",
-        body: JSON.stringify({ defaultModel: defaultModel === modelId ? "" : modelId }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["ai-settings"] });
-      toast.success("Default model updated");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const verifyModel = async (id: string) => {
+    setVerifyingId(id);
+    try {
+      const res = await api<VerifyResult>(`/api/admin/models/registry/${id}/verify`, {
+        method: "POST",
+      });
+      if (res.verified) {
+        toast.success(`Verified · ${fmtMs(res.latencyMs)}`);
+      } else {
+        toast.error(`Verification failed: ${res.error || "unknown error"}`);
+      }
+      qc.invalidateQueries({ queryKey: ["ai-models-registry"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Verify failed");
+    } finally {
+      setVerifyingId(null);
+    }
+  };
 
   const selectedProvider = providers.find((p) => p.id === effectiveProvider);
+  const errMsg = modelsError instanceof Error ? modelsError.message : modelsError ? String(modelsError) : "";
 
   return (
     <div className="space-y-3">
@@ -907,7 +1256,7 @@ function ModelsSection({
           </SelectTrigger>
           <SelectContent>
             {providers.map((p) => (
-              <SelectItem key={p.id} value={p.id} disabled={!p.hasKey && p.authScheme !== "none"}>
+              <SelectItem key={p.id} value={p.id}>
                 <span className="flex items-center gap-2">
                   <CircleDot
                     className={cn(
@@ -929,12 +1278,12 @@ function ModelsSection({
         <Button
           size="sm"
           className="gap-2"
-          onClick={() => setFetchTrigger((n) => n + 1)}
-          disabled={!effectiveProvider || !selectedProvider?.modelsEndpoint}
-          title={!selectedProvider?.modelsEndpoint ? "Provider does not support model listing" : "Fetch models"}
+          onClick={syncModels}
+          disabled={!effectiveProvider || syncing}
+          title="Fetch the live model list from this provider and persist to the registry"
         >
-          <RefreshCw className="h-4 w-4" />
-          Fetch models
+          {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Sync from provider
         </Button>
 
         {selectedProvider?.docsUrl && (
@@ -949,48 +1298,57 @@ function ModelsSection({
         )}
       </div>
 
-      {!selectedProvider?.modelsEndpoint && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-400">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          This provider does not support live model listing. Add models manually in the Credentials tab as custom models.
-        </div>
-      )}
+      {/* Three-layer counts */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Card className="p-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Catalog</p>
+          <p className="text-lg font-semibold tabular-nums">{counts.catalog}</p>
+        </Card>
+        <Card className="p-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verified</p>
+          <p className="text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+            {counts.verified}
+          </p>
+        </Card>
+        <Card className="p-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Approved</p>
+          <p className="text-lg font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+            {counts.approved}
+          </p>
+        </Card>
+        <Card className="p-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Healthy</p>
+          <p className="text-lg font-semibold tabular-nums text-teal-600 dark:text-teal-400">
+            {counts.healthy}
+          </p>
+        </Card>
+      </div>
 
-      {/* Search + filter */}
-      {(models.length > 0 || fetchError) && (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search models…"
-              className="pl-8"
-            />
-          </div>
-          <Select value={filterCap} onValueChange={setFilterCap}>
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All capabilities</SelectItem>
-              <SelectItem value="vision">Vision</SelectItem>
-              <SelectItem value="functionCalling">Function calling</SelectItem>
-              <SelectItem value="reasoning">Reasoning</SelectItem>
-              <SelectItem value="streaming">Streaming</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            onClick={() => setFetchTrigger((n) => n + 1)}
-            disabled={!effectiveProvider}
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh
-          </Button>
+      {/* Layer filter + search */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex gap-1 rounded-md border bg-muted/30 p-0.5">
+          {(["catalog", "verified", "approved"] as const).map((l) => (
+            <Button
+              key={l}
+              size="sm"
+              variant={layer === l ? "default" : "ghost"}
+              className="h-7 px-3 text-[11px] capitalize"
+              onClick={() => setLayer(l)}
+            >
+              {l}
+            </Button>
+          ))}
         </div>
-      )}
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search models by display name…"
+            className="pl-8"
+          />
+        </div>
+      </div>
 
       {/* Loading skeleton */}
       {modelsLoading && (
@@ -1002,23 +1360,23 @@ function ModelsSection({
       )}
 
       {/* Error */}
-      {fetchError && !modelsLoading && (
+      {errMsg && !modelsLoading && (
         <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
           <X className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div>
-            <p className="font-medium">Failed to fetch models</p>
-            <p className="mt-0.5 opacity-90">{fetchError}</p>
+            <p className="font-medium">Failed to load models</p>
+            <p className="mt-0.5 opacity-90">{errMsg}</p>
           </div>
         </div>
       )}
 
       {/* Empty state */}
-      {!modelsLoading && !fetchError && models.length === 0 && (
+      {!modelsLoading && !errMsg && models.length === 0 && (
         <Card className="flex flex-col items-center justify-center gap-2 py-12 text-center">
           <Cpu className="h-8 w-8 text-muted-foreground/40" />
-          <p className="text-sm font-medium">No models loaded</p>
+          <p className="text-sm font-medium">No models in the registry</p>
           <p className="text-xs text-muted-foreground">
-            Select a provider and click “Fetch models” to pull the live model list.
+            Click <span className="font-medium">&ldquo;Sync from provider&rdquo;</span> to fetch the live model list and populate the three-layer registry.
           </p>
         </Card>
       )}
@@ -1035,85 +1393,181 @@ function ModelsSection({
                   <th className="hidden px-3 py-2 font-medium md:table-cell">Input $/M</th>
                   <th className="hidden px-3 py-2 font-medium md:table-cell">Output $/M</th>
                   <th className="px-3 py-2 font-medium">Caps</th>
-                  <th className="px-3 py-2 text-right font-medium">Enabled</th>
-                  <th className="px-3 py-2 text-center font-medium">Default</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map((m) => {
-                  const enabled = enabledModels.includes(m.id);
-                  const isDefault = defaultModel === m.id;
-                  return (
-                    <tr key={m.id} className="hover:bg-muted/30">
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{m.name}</div>
-                        <div className="text-[10px] font-mono text-muted-foreground">{m.id}</div>
-                      </td>
-                      <td className="hidden px-3 py-2 tabular-nums text-xs text-muted-foreground sm:table-cell">
-                        {m.contextWindow ? m.contextWindow.toLocaleString() : "—"}
-                      </td>
-                      <td className="hidden px-3 py-2 tabular-nums text-xs text-muted-foreground md:table-cell">
-                        {m.inputCost != null ? fmtCost(m.inputCost) : "—"}
-                      </td>
-                      <td className="hidden px-3 py-2 tabular-nums text-xs text-muted-foreground md:table-cell">
-                        {m.outputCost != null ? fmtCost(m.outputCost) : "—"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {m.capabilities?.vision && (
-                            <span title="Vision" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
-                              <Eye className="h-2.5 w-2.5" />
-                            </span>
+                {models.map((m) => (
+                  <tr key={m.id} className="hover:bg-muted/30">
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium">{m.displayName}</span>
+                        {m.isDefault && (
+                          <Crown className="h-3 w-3 fill-amber-500 text-amber-500" aria-label="Default" />
+                        )}
+                      </div>
+                      <div className="text-[10px] font-mono text-muted-foreground">{m.modelId}</div>
+                      <div className="text-[10px] text-muted-foreground">{m.providerName}</div>
+                    </td>
+                    <td className="hidden px-3 py-2 tabular-nums text-xs text-muted-foreground sm:table-cell">
+                      {m.contextWindow ? m.contextWindow.toLocaleString() : "—"}
+                    </td>
+                    <td className="hidden px-3 py-2 tabular-nums text-xs text-muted-foreground md:table-cell">
+                      {m.inputCostPerM != null ? fmtCost(m.inputCostPerM) : "—"}
+                    </td>
+                    <td className="hidden px-3 py-2 tabular-nums text-xs text-muted-foreground md:table-cell">
+                      {m.outputCostPerM != null ? fmtCost(m.outputCostPerM) : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        {m.supportsVision && (
+                          <span title="Vision" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
+                            <Eye className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+                        {m.supportsFunctionCalling && (
+                          <span title="Function calling" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
+                            <Wrench className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+                        {m.supportsReasoning && (
+                          <span title="Reasoning" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
+                            <Brain className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+                        {m.supportsStreaming && (
+                          <span title="Streaming" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
+                            <Zap className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+                        {m.supportsImages && (
+                          <span title="Image output" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
+                            <ImageIcon className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+                        {m.supportsAudio && (
+                          <span title="Audio" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
+                            <AudioLines className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+                        {m.supportsEmbeddings && (
+                          <span title="Embeddings" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
+                            <Boxes className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-col gap-1">
+                        <VerificationBadge status={m.verificationStatus} />
+                        <HealthBadge status={m.healthStatus} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 gap-1 px-2 text-[10px]"
+                          onClick={() => verifyModel(m.id)}
+                          disabled={verifyingId === m.id}
+                          title="Send a probe request to verify this model"
+                        >
+                          {verifyingId === m.id ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <Microscope className="h-2.5 w-2.5" />
                           )}
-                          {m.capabilities?.functionCalling && (
-                            <span title="Function calling" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
-                              <Wrench className="h-2.5 w-2.5" />
-                            </span>
-                          )}
-                          {m.capabilities?.reasoning && (
-                            <span title="Reasoning" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
-                              <Brain className="h-2.5 w-2.5" />
-                            </span>
-                          )}
-                          {m.capabilities?.streaming && (
-                            <span title="Streaming" className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-primary">
-                              <Zap className="h-2.5 w-2.5" />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Switch
-                          checked={enabled}
-                          onCheckedChange={() => toggleEnabled.mutate(m.id)}
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-center">
+                          Verify
+                        </Button>
                         <button
-                          onClick={() => setDefault.mutate(m.id)}
+                          onClick={() => patchModel.mutate({ id: m.id, body: { approved: !m.approved } })}
                           className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
-                          title={isDefault ? "Remove default" : "Set as default"}
+                          title={m.approved ? "Unapprove (hide from users)" : "Approve for user visibility"}
+                          aria-label={m.approved ? "Unapprove model" : "Approve model"}
                         >
                           <Star
                             className={cn(
-                              "h-4 w-4",
-                              isDefault ? "fill-amber-500 text-amber-500" : "text-muted-foreground"
+                              "h-3.5 w-3.5",
+                              m.approved ? "fill-amber-500 text-amber-500" : "text-muted-foreground"
                             )}
                           />
                         </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        <button
+                          onClick={() =>
+                            patchModel.mutate({
+                              id: m.id,
+                              body: { isDefault: !m.isDefault, defaultCapability: "chat" },
+                            })
+                          }
+                          className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
+                          title={m.isDefault ? "Remove default" : "Set as default chat model"}
+                          aria-label={m.isDefault ? "Remove default" : "Set as default"}
+                        >
+                          <Crown
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              m.isDefault ? "fill-amber-500 text-amber-500" : "text-muted-foreground"
+                            )}
+                          />
+                        </button>
+                        <Switch
+                          checked={m.enabled}
+                          onCheckedChange={(v) => patchModel.mutate({ id: m.id, body: { enabled: v } })}
+                          title={m.enabled ? "Disable routing" : "Enable routing"}
+                          aria-label={m.enabled ? "Disable model" : "Enable model"}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
           <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
-            Showing {filtered.length} of {models.length} models · {enabledModels.length} enabled platform-wide
+            Showing {models.length} model{models.length !== 1 ? "s" : ""} · {counts.catalog} in catalog ·{" "}
+            {counts.verified} verified · {counts.approved} approved
           </div>
         </Card>
       )}
     </div>
+  );
+}
+
+/** Badge for the three-layer verification status (Catalog → Verified → Approved). */
+function VerificationBadge({ status }: { status: string }) {
+  const map: Record<string, { color: string; label: string }> = {
+    verified: { color: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400", label: "Verified" },
+    unverified: { color: "border-muted-foreground/30 text-muted-foreground", label: "Unverified" },
+    unavailable: { color: "border-rose-500/30 text-rose-600 dark:text-rose-400", label: "Unavailable" },
+    deprecated: { color: "border-amber-500/30 text-amber-600 dark:text-amber-400", label: "Deprecated" },
+    preview: { color: "border-violet-500/30 text-violet-600 dark:text-violet-400", label: "Preview" },
+    private: { color: "border-slate-500/30 text-slate-600 dark:text-slate-400", label: "Private" },
+    "disabled-by-provider": { color: "border-rose-500/30 text-rose-600 dark:text-rose-400", label: "Disabled" },
+  };
+  const m = map[status] ?? map.unverified;
+  return (
+    <Badge variant="outline" className={cn("gap-1 text-[9px] leading-tight", m.color)}>
+      {m.label}
+    </Badge>
+  );
+}
+
+/** Badge for the model's live health status (probed via /verify). */
+function HealthBadge({ status }: { status: string }) {
+  const map: Record<string, { color: string; label: string }> = {
+    healthy: { color: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400", label: "Healthy" },
+    slow: { color: "border-amber-500/30 text-amber-600 dark:text-amber-400", label: "Slow" },
+    degraded: { color: "border-orange-500/30 text-orange-600 dark:text-orange-400", label: "Degraded" },
+    offline: { color: "border-rose-500/30 text-rose-600 dark:text-rose-400", label: "Offline" },
+    unknown: { color: "border-muted-foreground/30 text-muted-foreground", label: "Unknown" },
+  };
+  const m = map[status] ?? map.unknown;
+  return (
+    <Badge variant="outline" className={cn("gap-1 text-[9px] leading-tight", m.color)}>
+      {m.label}
+    </Badge>
   );
 }
 

@@ -445,3 +445,88 @@ Stage Summary:
 - Sync reports are accurate (catalog/new/updated/unavailable/duration).
 - All admin actions audit-logged.
 - Next: build the admin UI for the three-layer model management, wire routing into ai.ts, verify models in batch.
+
+---
+Task ID: 12-ui
+Agent: 12-ui (ai-infra fix agent)
+Task: Fix the broken Providers and Models tabs in `src/features/ai-infra/ai-infra-view.tsx`. Providers had no inline API-key input (forcing a Credentials-tab hop); Models still used the deprecated `fetchProviderModels` flow instead of the Phase 2.8 three-layer registry.
+
+Work Log:
+- Read the worklog (Tasks 1–11) and the existing 2,637-line `ai-infra-view.tsx`. Confirmed the two problems: (1) `ProvidersSection` cards showed "Unconfigured" with a disabled Test button and no way to enter a key inline; (2) `ModelsSection` used `fetchTrigger` + `GET /api/admin/providers/:id/models` + the legacy `enabledModels`/`defaultModel` settings, ignoring the new `AiModel` registry.
+- Inspected the backend endpoints to wire against:
+  - `GET /api/admin/settings` returns `apiKeys[]` with `apiKeyMasked` (raw keys stripped).
+  - `PATCH /api/admin/settings` accepts full `apiKeys[]` replacement; preserves raw keys when incoming `apiKey` is empty; enforces one default per role; masks on save.
+  - `POST /api/admin/providers/:id/test` returns `{ success, latencyMs, modelCount, error? }`.
+  - `GET /api/admin/models/registry?provider=<id>&layer=<catalog|verified|approved>&q=<search>` returns `{ models: AiModel[], counts: { catalog, verified, approved, healthy } }`.
+  - `PATCH /api/admin/models/registry/:id` accepts `{ approved?, enabled?, isDefault?, defaultCapability?, displayName? }` and auto-unsets the previous default for a capability.
+  - `POST /api/admin/models/registry/:id/verify` returns `{ verified, latencyMs, error? }`.
+  - `POST /api/admin/models/sync/:providerId` returns the full `SyncReport`.
+
+- **Added 5 new TypeScript interfaces** after `TestResult`: `AiModel` (30+ fields mirroring the Prisma model), `RegistryCounts`, `RegistryResponse`, `SyncReport`, `VerifyResult`.
+
+- **Providers tab — rewrote `ProvidersSection`, added `ProviderCard`, updated `ProviderConfigDialog` + `ProviderConfigForm`:**
+  - `ProvidersSection` now also fetches `GET /api/admin/settings` and passes it down so each card can resolve its existing masked key without a Credentials hop.
+  - Extracted the per-card JSX into a new `ProviderCard` component that owns local state (`apiKeyInput`, `showKey`, `baseUrlInput`, `saving`) initialised via lazy `useState` — no syncing effect.
+  - Each card now shows: an **editable Base URL input** for custom/azure/bedrock providers (read-only display otherwise), an **API key input** (password + show/hide eye toggle) with the current masked key shown below in emerald when present, and a **"Save & Test" button** that appears only when the user types into the key input.
+  - The **Test button** is now enabled whenever a key is available (saved OR freshly typed), instead of being disabled waiting for the Credentials tab.
+  - **"Save & Test" flow**: reads current `apiKeys[]`, removes any entry for this provider, appends `{ id: "key-<providerId>", label: "<ProviderName> Key", role: "all", provider, baseUrl, apiKey, apiKeyMasked: "", isDefault: true, createdAt: now }`, PATCHes `/api/admin/settings`, invalidates `["ai-settings"]`, then POSTs `/api/admin/providers/:id/test` and toasts the result.
+  - `statusBadge` was promoted to module scope so both the card and the file can share it.
+  - `ProviderConfigForm` keeps the existing org/project/region/timeout/retry fields and adds the same API-key section (with a "Current: <masked>" pill + "Save key" button) plus a Base URL field for custom providers. `ProviderConfigDialog` now passes `settings` through.
+
+- **Models tab — rewrote `ModelsSection` to use the three-layer registry:**
+  - Removed the old `fetchTrigger` / `LiveModel` / `enabledModels` / `defaultModel` flow.
+  - **Sync button**: "Sync from provider" → `POST /api/admin/models/sync/:providerId`. Toasts `Synced <n> models · <new> new · <updated> updated · <duration>` on success; toasts the error on failure.
+  - **Layer filter**: three-button segmented control (Catalog / Verified / Approved) backed by local `layer` state.
+  - **Registry query**: `useQuery(["ai-models-registry", effectiveProvider, layer, search])` → `GET /api/admin/models/registry?provider=<id>&layer=<layer>&q=<search>`. The API does the contains-filter on `displayName`; the search box debounces naturally via react-query's default stale time.
+  - **Counts strip**: 4 cards showing `catalog` / `verified` / `approved` / `healthy` from the registry response (emerald/amber/teal colour-coded).
+  - **Model table** columns: Model (displayName + modelId mono + providerName + Crown when isDefault) · Context · Input $/M · Output $/M · Caps (vision/function/reasoning/streaming/images/audio/embeddings icons) · Status (VerificationBadge + HealthBadge stacked) · Actions (Verify button + Approve Star + Set-default Crown + Enable Switch).
+  - **Verify button**: `POST /api/admin/models/registry/:id/verify` — toast `Verified · <latency>` on success or `Verification failed: <error>`.
+  - **Approve (star)**: `PATCH /api/admin/models/registry/:id` with `{ approved: !m.approved }`.
+  - **Set default (Crown)**: `PATCH ... { isDefault: !m.isDefault, defaultCapability: "chat" }` — backend auto-unsets previous default.
+  - **Enable toggle**: `Switch` → `PATCH ... { enabled: v }`.
+  - Added two helper components: `VerificationBadge` (7 status values: verified/unverified/unavailable/deprecated/preview/private/disabled-by-provider) and `HealthBadge` (5 statuses: healthy/slow/degraded/offline/unknown) — both colour-coded.
+  - Empty state now directs the user to "Sync from provider" instead of "Fetch models".
+
+- **Lint compliance**: `bun run lint` → **0 errors, 0 warnings**. `bunx tsc --noEmit` → no errors in `ai-infra-view.tsx` or any of the touched lib files (the remaining repo-wide TS errors are in `paywall-modal.tsx`, `billing-view.tsx`, `chat-view.tsx` — pre-existing, outside this task's scope). No `useEffect` with `setState` — the edits-overlay / lazy-initialiser pattern is preserved. `"use client"` and `export function AIInfraView` unchanged. Did NOT touch Defaults, Usage, Routing, Credentials, Limits, Logs, or Health tabs.
+- Verified: dev server recompiled cleanly after the edits; `/api/admin/providers`, `/api/admin/settings`, and `/api/admin/models/registry` all return 200.
+- Work record also written to `/home/z/my-project/agent-ctx/12-ui-ai-infra.md`.
+
+Stage Summary:
+- The Providers tab is now self-contained: admins can paste an API key + base URL directly on the card, click "Save & Test", and see the connection result inline — no more "Unconfigured" dead state with a disabled Test button forcing a Credentials-tab detour. The masked key is shown after saving and on subsequent loads.
+- The Models tab is now wired to the Phase 2.8 three-layer registry: Sync pulls live models into the AiModel table; the Catalog/Verified/Approved filter tabs and the four counts cards reflect registry state; each row's Approve star, Set-default Crown, Enable switch, and Verify button all hit the registry PATCH/POST endpoints. The old `enabledModels`/`defaultModel` settings are no longer used here.
+- File grew from 2,637 → 3,090 lines (added ~70 lines of new types + new `ProviderCard`, `VerificationBadge`, `HealthBadge` components + expanded `ProviderConfigForm` and `ModelsSection`).
+
+---
+Task ID: 12
+Agent: lead-architect (main) + full-stack-developer subagent (12-ui)
+Task: Fix dead Providers tab (no inline API key/test) and rebuild Models tab with three-layer registry.
+
+Work Log:
+- **Providers tab rebuilt**:
+  - Each provider card now has an **inline API key input** (password field with show/hide toggle) directly on the card.
+  - When a key is typed, a **"Save & Test"** button appears that saves the key to `apiKeys[]` via PATCH `/api/admin/settings` and then calls POST `/api/admin/providers/:id/test`.
+  - The **Test button** is now ENABLED when a key is available (saved OR freshly typed) — no longer disabled waiting for the Credentials tab.
+  - Shows the masked key in emerald below the input when one is saved.
+  - Editable base URL for custom/azure/bedrock providers.
+  - Config dialog (org/region/timeout) also has the API key section.
+- **Models tab rebuilt with three-layer registry**:
+  - **"Sync from provider"** button calls POST `/api/admin/models/sync/:providerId` — fetches live models from provider API, persists to AiModel table, shows sync report.
+  - **Three-layer filter tabs**: Catalog / Verified / Approved — filters the model list.
+  - Uses GET `/api/admin/models/registry?provider=<id>&layer=<layer>&q=<search>` instead of the old fetch endpoint.
+  - Shows 4-count strip: CATALOG / VERIFIED / APPROVED / HEALTHY.
+  - Each model row: displayName, modelId (mono), provider, contextWindow, inputCostPerM, outputCostPerM, capability icons, verificationStatus badge, healthStatus badge.
+  - **Verify button**: POST `/api/admin/models/registry/:id/verify` — sends a probe, shows result.
+  - **Approve/Unapprove button** (star): PATCH `/api/admin/models/registry/:id` with `{ approved: true/false }`.
+  - **Set default** (crown): PATCH with `{ isDefault: true, defaultCapability: "chat" }`.
+  - **Enable/disable switch**: PATCH with `{ enabled: true/false }`.
+  - Added `VerificationBadge` (7 statuses) and `HealthBadge` (5 statuses) components.
+- **Verified with agent-browser**:
+  - Providers tab: inline API key input visible with show/hide toggle; "Save & Test" button appears when key typed; Test button enabled.
+  - Models tab: selected OpenRouter → 340 catalog models displayed in table with context/cost/caps/status/actions; clicked "Approve model" → count went from 0 to 1 approved; clicked enable/disable switch → model disabled (switch unchecked, label changed to "Enable model").
+  - ESLint clean, no runtime errors.
+
+Stage Summary:
+- Providers tab is no longer dead — admins can enter API keys directly on each provider card and test immediately.
+- Models tab now uses the three-layer registry (Catalog/Verified/Approved) with sync, approve, enable/disable, verify, and set-default actions — all wired to real APIs.
+- 340 real OpenRouter models visible in the registry with live metadata (context, cost, capabilities).
+- Next: wire Defaults tab to approved models, wire routing into ai.ts, batch verification.
