@@ -26,6 +26,7 @@ const TITLES: Record<ModuleKey, { title: string; sub: string }> = {
   youtube: { title: "YouTube Workspace", sub: "Titles, scripts & thumbnails" },
   billing: { title: "Plans & Credits", sub: "Manage your subscription" },
   settings: { title: "Settings", sub: "Account, brand voice & API keys" },
+  admin: { title: "Super Admin", sub: "Platform security, models & performance" },
 };
 
 export function Topbar() {

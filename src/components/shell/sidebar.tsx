@@ -20,6 +20,7 @@ import {
   Moon,
   Sun,
   ChevronRight,
+  Shield,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWorkspace, type ModuleKey } from "@/store/workspace";
@@ -52,10 +53,18 @@ import { PLANS } from "@/lib/constants";
 import { toast } from "sonner";
 import { type LucideIcon } from "lucide-react";
 
-const NAV: {
+interface NavItem {
+  key: ModuleKey;
+  label: string;
+  icon: LucideIcon;
+  soon?: boolean;
+}
+interface NavGroup {
   group: string;
-  items: { key: ModuleKey; label: string; icon: LucideIcon; soon?: boolean }[];
-}[] = [
+  items: NavItem[];
+}
+
+const BASE_NAV: NavGroup[] = [
   {
     group: "Workspace",
     items: [{ key: "dashboard", label: "Dashboard", icon: LayoutDashboard }],
@@ -86,6 +95,11 @@ const NAV: {
   },
 ];
 
+const ADMIN_NAV: NavGroup = {
+  group: "Super Admin",
+  items: [{ key: "admin", label: "Platform Control", icon: Shield }],
+};
+
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useWorkspace();
 
@@ -93,7 +107,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "hidden md:flex shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-300 ease-out",
-        sidebarCollapsed ? "w-[68px]" : "w-[260px]"
+        sidebarCollapsed ? "w-[72px]" : "w-[264px]"
       )}
     >
       <SidebarContent collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
@@ -136,6 +150,8 @@ function SidebarContent({
   const { data: user } = useCurrentUser();
   const { theme, setTheme } = useTheme();
 
+  const isAdmin = !!user?.isAdmin;
+
   const planLabel = PLANS.find((p) => p.id === (user?.plan ?? "free"))?.name ?? "Free";
   const credits = user?.credits ?? 0;
   const planCredits = PLANS.find((p) => p.id === (user?.plan ?? "free"))?.credits ?? 200;
@@ -148,13 +164,20 @@ function SidebarContent({
 
   const initials = (user?.name ?? "U").slice(0, 2).toUpperCase();
 
+  // Build the nav list — insert the Super Admin group before Account when admin
+  const navGroups: NavGroup[] = isAdmin
+    ? [...BASE_NAV.slice(0, 3), ADMIN_NAV, BASE_NAV[3]]
+    : BASE_NAV;
+
   return (
     <>
-      {/* Brand row */}
+      {/* Brand row — fixed comfortable height, logo + expand button always visible */}
       <div
         className={cn(
-          "flex h-16 items-center gap-2.5 border-b",
-          collapsed ? "flex-col justify-center gap-2 px-2" : "px-4"
+          "flex shrink-0 items-center border-b",
+          collapsed
+            ? "h-auto flex-col gap-2.5 py-3.5 px-2"
+            : "h-[60px] gap-2.5 px-4"
         )}
       >
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-teal-500 text-primary-foreground shadow-glow">
@@ -166,7 +189,7 @@ function SidebarContent({
             <p className="truncate text-[11px] text-muted-foreground">Business OS</p>
           </div>
         )}
-        {/* Collapse toggle — desktop only. When collapsed it sits below the logo, centered. */}
+        {/* Collapse toggle — desktop only */}
         {onToggleCollapse && (
           <TooltipProvider delayDuration={200}>
             <Tooltip>
@@ -191,10 +214,11 @@ function SidebarContent({
       </div>
 
       {/* New chat */}
-      <div className="p-3">
+      <div className={cn("shrink-0", collapsed ? "px-2 py-3" : "px-3 py-3")}>
         <Button
-          className="w-full justify-start gap-2"
+          className="w-full gap-2"
           onClick={() => navigate("chat")}
+          size={collapsed ? "icon" : "default"}
         >
           <Plus className="h-4 w-4 shrink-0" />
           {!collapsed && <span>New Chat</span>}
@@ -202,59 +226,87 @@ function SidebarContent({
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto scroll-thin px-3 pb-3">
-        {NAV.map((group) => (
-          <div key={group.group} className="mb-4">
-            {!collapsed && (
-              <p className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                {group.group}
-              </p>
-            )}
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const active = activeModule === item.key;
-                const btn = (
-                  <button
-                    onClick={() => navigate(item.key)}
-                    className={cn(
-                      "group relative flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
-                      collapsed && "justify-center",
-                      active
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-                    )}
-                  >
-                    {active && (
-                      <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
-                    )}
-                    <Icon className={cn("h-[18px] w-[18px] shrink-0", active && "text-primary")} />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                    {!collapsed && item.soon && (
-                      <Badge variant="outline" className="ml-auto h-5 px-1.5 text-[10px] font-normal text-muted-foreground">
-                        Soon
-                      </Badge>
-                    )}
-                  </button>
-                );
-                if (!collapsed) return <div key={item.key}>{btn}</div>;
-                return (
-                  <TooltipProvider key={item.key} delayDuration={100}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>{btn}</TooltipTrigger>
-                      <TooltipContent side="right">{item.label}</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                );
-              })}
+      <nav className="flex-1 overflow-y-auto scroll-thin px-3 pb-4">
+        {navGroups.map((group, gi) => {
+          const isAdminGroup = group.group === "Super Admin";
+          return (
+            <div key={group.group} className={cn(gi > 0 && "mt-5")}>
+              {!collapsed && (
+                <p
+                  className={cn(
+                    "mb-2 px-2.5 text-[10px] font-semibold uppercase tracking-wider",
+                    isAdminGroup ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/60"
+                  )}
+                >
+                  {group.group}
+                </p>
+              )}
+              {collapsed && isAdminGroup && <div className="my-3 border-t" />}
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = activeModule === item.key;
+                  const btn = (
+                    <button
+                      onClick={() => navigate(item.key)}
+                      className={cn(
+                        "group relative flex w-full items-center gap-3 rounded-lg text-sm font-medium transition-all",
+                        collapsed ? "justify-center px-0 py-2.5" : "px-2.5 py-2",
+                        active
+                          ? isAdminGroup
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                      )}
+                    >
+                      {active && (
+                        <span
+                          className={cn(
+                            "absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full",
+                            isAdminGroup ? "bg-amber-500" : "bg-primary"
+                          )}
+                        />
+                      )}
+                      <Icon
+                        className={cn(
+                          "h-[18px] w-[18px] shrink-0 transition-colors",
+                          active
+                            ? isAdminGroup
+                              ? "text-amber-500"
+                              : "text-primary"
+                            : "text-muted-foreground group-hover:text-sidebar-accent-foreground"
+                        )}
+                      />
+                      {!collapsed && <span className="truncate">{item.label}</span>}
+                      {!collapsed && item.soon && (
+                        <Badge variant="outline" className="ml-auto h-5 px-1.5 text-[10px] font-normal text-muted-foreground">
+                          Soon
+                        </Badge>
+                      )}
+                      {!collapsed && isAdminGroup && (
+                        <Shield className="ml-auto h-3.5 w-3.5 text-amber-500/70" />
+                      )}
+                    </button>
+                  );
+                  if (!collapsed) return <div key={item.key}>{btn}</div>;
+                  return (
+                    <TooltipProvider key={item.key} delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>{btn}</TooltipTrigger>
+                        <TooltipContent side="right">{item.label}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Footer: credits + profile */}
       {!collapsed ? (
-        <div className="space-y-3 border-t p-3">
+        <div className="shrink-0 space-y-3 border-t p-3">
           <div className="rounded-xl border bg-card p-3">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">Credits</span>
@@ -267,7 +319,6 @@ function SidebarContent({
             <Progress value={creditPct} className="h-1.5" />
           </div>
 
-          {/* Profile dropdown */}
           <ProfileMenu
             user={user}
             initials={initials}
@@ -277,7 +328,7 @@ function SidebarContent({
           />
         </div>
       ) : (
-        <div className="border-t p-3">
+        <div className="shrink-0 border-t p-3">
           <ProfileMenu
             user={user}
             initials={initials}
@@ -300,7 +351,7 @@ function ProfileMenu({
   onNavigate,
   collapsed = false,
 }: {
-  user: { name?: string; email?: string; plan?: string } | undefined;
+  user: { name?: string; email?: string; plan?: string; isAdmin?: boolean } | undefined;
   initials: string;
   theme: string | undefined;
   onToggleTheme: () => void;
@@ -361,6 +412,12 @@ function ProfileMenu({
           <CreditCard className="h-4 w-4 text-muted-foreground" />
           <span>Plans & credits</span>
         </DropdownMenuItem>
+        {user?.isAdmin && (
+          <DropdownMenuItem onClick={() => onNavigate("admin")} className="gap-2.5 py-2 text-amber-600 focus:text-amber-600 dark:text-amber-400">
+            <Shield className="h-4 w-4" />
+            <span>Super Admin</span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onToggleTheme} className="gap-2.5 py-2">
           {theme === "dark" ? (

@@ -20,6 +20,7 @@ const ImagesView = lazy(() => import("@/features/images/images-view").then((m) =
 const AgentsView = lazy(() => import("@/features/agents/agents-view").then((m) => ({ default: m.AgentsView })));
 const BillingView = lazy(() => import("@/features/billing/billing-view").then((m) => ({ default: m.BillingView })));
 const SettingsView = lazy(() => import("@/features/settings/settings-view").then((m) => ({ default: m.SettingsView })));
+const AdminView = lazy(() => import("@/features/admin/admin-view").then((m) => ({ default: m.AdminView })));
 
 function ModuleSkeleton() {
   return (
@@ -55,6 +56,7 @@ export function AppShell() {
               {activeModule === "agents" && <AgentsView />}
               {activeModule === "billing" && <BillingView />}
               {activeModule === "settings" && <SettingsView />}
+              {activeModule === "admin" && <AdminView />}
               {(activeModule === "seo" || activeModule === "marketing" || activeModule === "youtube") && (
                 <ComingSoon module={activeModule} />
               )}

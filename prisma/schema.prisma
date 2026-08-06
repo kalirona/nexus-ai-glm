@@ -216,3 +216,11 @@ model BrandVoice {
 
   @@index([userId])
 }
+
+/// Platform-wide key-value settings managed by super admins.
+/// Stores AI provider keys, enabled models, security & performance config.
+model PlatformSetting {
+  key       String   @id
+  value     String   // JSON-encoded value
+  updatedAt DateTime @updatedAt
+}

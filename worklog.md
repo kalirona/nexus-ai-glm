@@ -147,3 +147,41 @@ Stage Summary:
 - Settings page optimized: animated tab transitions, per-tab headings, responsive layout.
 - Super Admin settings live: platform overview with MRR/user metrics, user management (plan/status/credits/admin controls), system settings (signups, maintenance, credit costs, audit log). Admin-only — hidden from non-admin users.
 - Next: Phase 2 real auth/payments (ROADMAP.md), Phase 3 SEO/Marketing/YouTube workspaces.
+
+---
+Task ID: 5
+Agent: lead-architect (main)
+Task: Separate Super Admin in sidebar, add AI model management (pull real backend models), security & performance controls, fix collapsed sidebar brand spacing, improve SaaS spacing.
+
+Work Log:
+- Schema: added `PlatformSetting` key-value model for storing admin config (provider keys, enabled models, security/performance settings). Pushed + regenerated Prisma client.
+- Store: added `admin` to `ModuleKey`.
+- Settings helper (`src/lib/settings.ts`): `getSetting`/`setSetting` with in-memory cache + `DEFAULT_SETTINGS` (provider key, enabled models, rate limits, IP allowlist, verification/abuse flags, cache TTL, concurrency, timeout).
+- Admin API routes:
+  - `GET/PATCH /api/admin/settings` — full platform settings (key masked, never returned raw).
+  - `GET /api/admin/models` — model catalog with enabled status.
+  - `POST /api/admin/models/test` — **pulls real allowed models from the backend** by probing each model in the catalog with a tiny "ping" completion request; returns availability + latency per model + the list of allowed models. Auto-enables available models on success.
+- Sidebar overhaul (`src/components/shell/sidebar.tsx`):
+  - **Super Admin nav section** — a separate "SUPER ADMIN" group (amber-accented) inserted before Account, visible only when `user.isAdmin`. Contains "Platform Control" → `admin` module. Also added a "Super Admin" link in the profile dropdown.
+  - **Fixed collapsed brand spacing** — the brand row now uses `h-auto flex-col gap-2.5 py-3.5` when collapsed (was `h-16` which overflowed), so the logo sits comfortably with the expand button below it — no more "logo pushes up".
+  - **Improved SaaS spacing** — sidebar width 264px (was 260), collapsed width 72px (was 68); nav groups have `mt-5` gap; items use `py-2 px-2.5` with `space-y-0.5`; group labels are `text-[10px] font-semibold uppercase tracking-wider`; active items get a left accent bar; admin group uses amber accent throughout; separator line before admin group when collapsed.
+- New `AdminView` module (`src/features/admin/admin-view.tsx`) with 3 animated sections:
+  - **AI Models**: Provider key input (with show/hide toggle + masked display), "Pull models" button that probes the backend and shows per-model availability + latency, model catalog with enable/disable switches.
+  - **Security**: Rate limiting (per-minute/per-day), IP allowlist, email verification toggle, auto-suspend on abuse, block proxy/VPN toggle.
+  - **Performance**: Live stat cards (cache status, TTL, max streams, timeout), caching toggle, cache TTL, max concurrent streams, response timeout.
+- Wired `AdminView` into `AppShell` + added topbar title.
+- Verified with agent-browser:
+  - Collapsed sidebar: brand row no longer overflows, expand button visible & centered.
+  - Super Admin nav section visible (amber accent) with "Platform Control" button.
+  - Admin module loads with warning banner + 3 section tabs.
+  - AI Models: API key input + "Pull models" successfully probed all 5 models (5/5 available, latency shown per model), auto-enabled them.
+  - Security: rate limits, IP allowlist, all toggles render.
+  - Performance: live stats + caching/concurrency/timeout controls render.
+  - ESLint clean, no runtime errors.
+
+Stage Summary:
+- Super Admin is now a separate sidebar section (admin-only) with its own module — distinct from user Settings.
+- Admins can add an API key, pull real allowed models from the backend (live probe with latency), and enable/disable individual models.
+- Security controls (rate limits, IP allowlist, verification, abuse protection) and performance controls (caching, concurrency, timeouts) are live and persisted.
+- Collapsed sidebar brand spacing fixed; overall sidebar spacing improved to SaaS-grade.
+- Next: Phase 2 real auth/payments, Phase 3 SEO/Marketing/YouTube workspaces.

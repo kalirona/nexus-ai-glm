@@ -13,7 +13,8 @@ export type ModuleKey =
   | "marketing"
   | "youtube"
   | "billing"
-  | "settings";
+  | "settings"
+  | "admin";
 
 export interface PendingAgent {
   key: string;
