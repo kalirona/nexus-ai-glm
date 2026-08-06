@@ -83,6 +83,20 @@ export const DEFAULT_SETTINGS = {
   costPerChat: 1,
   costPerImage: 8,
   costPerDocument: 5,
+  // AI Infrastructure Center
+  defaultModels: {} as Record<string, string>, // use case id → model id (chat, reasoning, coding, …)
+  routingRules: {} as Record<string, { primary: string; fallback: string }>, // use case → { primary, fallback }
+  aiLimits: {
+    monthlyBudget: 500,
+    dailyBudget: 25,
+    maxTokensPerRequest: 128000,
+    maxRequestsPerDay: 10000,
+    maxConcurrentRequests: 50,
+    perUserDailyLimit: 500,
+    perProjectDailyLimit: 2000,
+    perAgentDailyLimit: 1000,
+  },
+  defaultModel: "" as string, // global default chat model id (starred in Models tab)
 } as const;
 
 export type PlatformSettings = typeof DEFAULT_SETTINGS;

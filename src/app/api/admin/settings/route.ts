@@ -52,6 +52,10 @@ export async function GET() {
     costPerChat: await getSetting("costPerChat", DEFAULT_SETTINGS.costPerChat),
     costPerImage: await getSetting("costPerImage", DEFAULT_SETTINGS.costPerImage),
     costPerDocument: await getSetting("costPerDocument", DEFAULT_SETTINGS.costPerDocument),
+    defaultModels: await getSetting("defaultModels", DEFAULT_SETTINGS.defaultModels),
+    routingRules: await getSetting("routingRules", DEFAULT_SETTINGS.routingRules),
+    aiLimits: await getSetting("aiLimits", DEFAULT_SETTINGS.aiLimits),
+    defaultModel: await getSetting("defaultModel", DEFAULT_SETTINGS.defaultModel),
   };
 
   return NextResponse.json(settings);
@@ -221,6 +225,24 @@ export async function PATCH(req: Request) {
   if (typeof body.costPerDocument === "number") {
     await setSetting("costPerDocument", body.costPerDocument);
     changed.push("costPerDocument");
+  }
+
+  // AI Infrastructure fields (used by the AI Infrastructure Center UI)
+  if (body.defaultModels && typeof body.defaultModels === "object") {
+    await setSetting("defaultModels", body.defaultModels);
+    changed.push("defaultModels");
+  }
+  if (body.routingRules && typeof body.routingRules === "object") {
+    await setSetting("routingRules", body.routingRules);
+    changed.push("routingRules");
+  }
+  if (body.aiLimits && typeof body.aiLimits === "object") {
+    await setSetting("aiLimits", body.aiLimits);
+    changed.push("aiLimits");
+  }
+  if (typeof body.defaultModel === "string") {
+    await setSetting("defaultModel", body.defaultModel);
+    changed.push("defaultModel");
   }
 
   await logAudit(admin.id, "admin.settings.update", "platform", undefined, { changed: changed.join(", ") });

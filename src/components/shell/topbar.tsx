@@ -27,6 +27,7 @@ const TITLES: Record<ModuleKey, { title: string; sub: string }> = {
   billing: { title: "Plans & Credits", sub: "Manage your subscription" },
   settings: { title: "Settings", sub: "Account, brand voice & API keys" },
   admin: { title: "Super Admin", sub: "Platform security, models & performance" },
+  "ai-infra": { title: "AI Infrastructure", sub: "Providers, models, routing & usage" },
 };
 
 export function Topbar() {

@@ -1,5 +1,6 @@
 import ZAI from "z-ai-web-dev-sdk";
 import { resolveKeyForRole } from "@/lib/settings";
+import { logAiUsage } from "@/lib/provider-service";
 
 /**
  * AI provider abstraction (Service Layer).
@@ -78,71 +79,131 @@ export async function streamChatCompletion(messages: ChatMsg[], model?: string) 
 /** Non-streaming completion — used for document generation. */
 export async function chatCompletion(messages: ChatMsg[], model?: string): Promise<string> {
   const keyConfig = await resolveKeyForRole("chat");
+  const start = Date.now();
+  const usedModel = model || "auto";
+  const provider = keyConfig ? "configured" : "zai-sdk";
 
-  if (keyConfig) {
+  try {
+    if (keyConfig) {
+      const body: Record<string, unknown> = {
+        messages,
+        thinking: { type: "disabled" },
+      };
+      if (model && model !== "auto") body.model = model;
+
+      const res = await fetch(`${keyConfig.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${keyConfig.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120000),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Chat API failed (${res.status}): ${errText.slice(0, 200)}`);
+      }
+      const data = await res.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
+      // Log usage
+      await logAiUsage({
+        provider,
+        model: usedModel,
+        requestType: "document",
+        promptTokens: data.usage?.prompt_tokens,
+        completionTokens: data.usage?.completion_tokens,
+        totalTokens: data.usage?.total_tokens,
+        durationMs: Date.now() - start,
+        success: true,
+      });
+      return data.choices?.[0]?.message?.content ?? "";
+    }
+
+    // Fallback to SDK
+    const zai = await getSDK();
     const body: Record<string, unknown> = {
       messages,
       thinking: { type: "disabled" },
     };
     if (model && model !== "auto") body.model = model;
 
-    const res = await fetch(`${keyConfig.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${keyConfig.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120000),
+    const completion = await zai.chat.completions.create(body as never);
+    const data = completion as { choices?: { message?: { content?: string } }[] };
+    await logAiUsage({
+      provider: "zai-sdk",
+      model: usedModel,
+      requestType: "document",
+      durationMs: Date.now() - start,
+      success: true,
     });
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`Chat API failed (${res.status}): ${errText.slice(0, 200)}`);
-    }
-    const data = await res.json();
-    return (data as { choices?: { message?: { content?: string } }[] }).choices?.[0]?.message?.content ?? "";
+    return data.choices?.[0]?.message?.content ?? "";
+  } catch (err) {
+    await logAiUsage({
+      provider,
+      model: usedModel,
+      requestType: "document",
+      durationMs: Date.now() - start,
+      success: false,
+      errorMessage: err instanceof Error ? err.message.slice(0, 200) : "Unknown error",
+    });
+    throw err;
   }
-
-  // Fallback to SDK
-  const zai = await getSDK();
-  const body: Record<string, unknown> = {
-    messages,
-    thinking: { type: "disabled" },
-  };
-  if (model && model !== "auto") body.model = model;
-
-  const completion = await zai.chat.completions.create(body as never);
-  const data = completion as { choices?: { message?: { content?: string } }[] };
-  return data.choices?.[0]?.message?.content ?? "";
 }
 
 /** Generate an image, returning base64. Uses the image-role key if available. */
 export async function generateImage(prompt: string, size: string): Promise<string> {
   const keyConfig = await resolveKeyForRole("image");
+  const start = Date.now();
 
-  if (keyConfig) {
-    const res = await fetch(`${keyConfig.baseUrl}/images/generations`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${keyConfig.apiKey}`,
-      },
-      body: JSON.stringify({ prompt, size, n: 1 }),
-      signal: AbortSignal.timeout(120000),
-    });
+  try {
+    if (keyConfig) {
+      const res = await fetch(`${keyConfig.baseUrl}/images/generations`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${keyConfig.apiKey}`,
+        },
+        body: JSON.stringify({ prompt, size, n: 1 }),
+        signal: AbortSignal.timeout(120000),
+      });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`Image API failed (${res.status}): ${errText.slice(0, 200)}`);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Image API failed (${res.status}): ${errText.slice(0, 200)}`);
+      }
+      const data = await res.json();
+      const base64 = (data as { data?: { b64_json?: string; base64?: string }[] }).data?.[0];
+      await logAiUsage({
+        provider: "configured",
+        model: "image-generation",
+        requestType: "image",
+        durationMs: Date.now() - start,
+        success: true,
+      });
+      return base64?.b64_json || base64?.base64 || "";
     }
-    const data = await res.json();
-    const base64 = (data as { data?: { b64_json?: string; base64?: string }[] }).data?.[0];
-    return base64?.b64_json || base64?.base64 || "";
-  }
 
-  // Fallback to SDK
-  const zai = await getSDK();
-  const res = await zai.images.generations.create({ prompt, size: size as never });
-  return res.data[0]?.base64 ?? "";
+    // Fallback to SDK
+    const zai = await getSDK();
+    const res = await zai.images.generations.create({ prompt, size: size as never });
+    await logAiUsage({
+      provider: "zai-sdk",
+      model: "image-generation",
+      requestType: "image",
+      durationMs: Date.now() - start,
+      success: true,
+    });
+    return res.data[0]?.base64 ?? "";
+  } catch (err) {
+    await logAiUsage({
+      provider: keyConfig ? "configured" : "zai-sdk",
+      model: "image-generation",
+      requestType: "image",
+      durationMs: Date.now() - start,
+      success: false,
+      errorMessage: err instanceof Error ? err.message.slice(0, 200) : "Unknown error",
+    });
+    throw err;
+  }
 }

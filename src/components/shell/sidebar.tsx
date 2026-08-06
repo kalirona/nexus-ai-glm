@@ -21,6 +21,7 @@ import {
   Sun,
   ChevronRight,
   Shield,
+  Cpu,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWorkspace, type ModuleKey } from "@/store/workspace";
@@ -97,7 +98,10 @@ const BASE_NAV: NavGroup[] = [
 
 const ADMIN_NAV: NavGroup = {
   group: "Super Admin",
-  items: [{ key: "admin", label: "Platform Control", icon: Shield }],
+  items: [
+    { key: "admin", label: "Platform Control", icon: Shield },
+    { key: "ai-infra", label: "AI Infrastructure", icon: Cpu },
+  ],
 };
 
 export function Sidebar() {

@@ -221,6 +221,29 @@ model BrandVoice {
 /// Stores AI provider keys, enabled models, security & performance config.
 model PlatformSetting {
   key       String   @id
-  value     String   // JSON-encoded value
+  value     String   // JSON-encoded value (API keys are encrypted)
   updatedAt DateTime @updatedAt
+}
+
+/// Logs every AI request for usage analytics, cost tracking, and debugging.
+model AiUsageLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  provider      String   // provider id (zai, openrouter, openai, …)
+  model         String   // model id sent to the provider
+  requestType   String   // chat | image | document | embedding
+  promptTokens  Int      @default(0)
+  completionTokens Int   @default(0)
+  totalTokens   Int      @default(0)
+  cost          Float    @default(0)
+  durationMs    Int      @default(0)
+  success       Boolean  @default(true)
+  errorMessage  String?
+  streaming     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([provider, createdAt])
+  @@index([model, createdAt])
+  @@index([userId, createdAt])
 }

@@ -1,0 +1,617 @@
+     1→    49→export type AIModel = (typeof AI_MODELS)[number];
+     2→    50→
+     3→    51→/**
+     4→    52→ * Known AI providers with full capability metadata.
+     5→    53→ * Selecting one auto-fills the base URL, auth scheme, and capability flags.
+     6→    54→ * "custom" lets admins enter any OpenAI-compatible endpoint.
+     7→    55→ */
+     8→    56→export interface ProviderDef {
+     9→    57→  id: string;
+    10→    58→  name: string;
+    11→    59→  baseUrl: string;
+    12→    60→  docsUrl: string;
+    13→    61→  keyLabel: string;
+    14→    62→  keyPlaceholder: string;
+    15→    63→  description: string;
+    16→    64→  authScheme: "bearer" | "x-api-key" | "query" | "none";
+    17→    65→  modelsEndpoint: string; // relative path for GET /models; empty = not supported
+    18→    66→  capabilities: {
+    19→    67→    streaming: boolean;
+    20→    68→    vision: boolean;
+    21→    69→    embedding: boolean;
+    22→    70→    audio: boolean;
+    23→    71→    image: boolean;
+    24→    72→    video: boolean;
+    25→    73→    reasoning: boolean;
+    26→    74→    functionCalling: boolean;
+    27→    75→  };
+    28→    76→  supportsOrgId?: boolean;
+    29→    77→  supportsProjectId?: boolean;
+    30→    78→  supportsRegion?: boolean;
+    31→    79→}
+    32→    80→
+    33→    81→export const AI_PROVIDERS: ProviderDef[] = [
+    34→    82→  {
+    35→    83→    id: "zai",
+    36→    84→    name: "Z.ai",
+    37→    85→    baseUrl: "https://api.z.ai/api/paas/v4",
+    38→    86→    docsUrl: "https://docs.z.ai",
+    39→    87→    keyLabel: "Z.ai API Key",
+    40→    88→    keyPlaceholder: "zai-xxxxxxxxxxxxxxxxxxxx",
+    41→    89→    description: "GLM models — GLM-4.6, GLM-4.5, GLM-4.5V, DeepSeek V3",
+    42→    90→    authScheme: "bearer",
+    43→    91→    modelsEndpoint: "/models",
+    44→    92→    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
+    45→    93→  },
+    46→    94→  {
+    47→    95→    id: "openrouter",
+    48→    96→    name: "OpenRouter",
+    49→    97→    baseUrl: "https://openrouter.ai/api/v1",
+    50→    98→    docsUrl: "https://openrouter.ai/keys",
+    51→    99→    keyLabel: "OpenRouter API Key",
+    52→   100→    keyPlaceholder: "sk-or-xxxxxxxxxxxxxxxxxxxx",
+    53→   101→    description: "200+ models — GPT, Claude, Gemini, Llama, Mistral & more",
+    54→   102→    authScheme: "bearer",
+    55→   103→    modelsEndpoint: "/models",
+    56→   104→    capabilities: { streaming: true, vision: true, embedding: false, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+    57→   105→  },
+    58→   106→  {
+    59→   107→    id: "openai",
+    60→   108→    name: "OpenAI",
+    61→   109→    baseUrl: "https://api.openai.com/v1",
+    62→   110→    docsUrl: "https://platform.openai.com/api-keys",
+    63→   111→    keyLabel: "OpenAI API Key",
+    64→   112→    keyPlaceholder: "sk-xxxxxxxxxxxxxxxxxxxx",
+    65→   113→    description: "GPT-4o, GPT-4o-mini, o1, o3-mini, DALL-E, Whisper, TTS",
+    66→   114→    authScheme: "bearer",
+    67→   115→    modelsEndpoint: "/models",
+    68→   116→    capabilities: { streaming: true, vision: true, embedding: true, audio: true, image: true, video: false, reasoning: true, functionCalling: true },
+    69→   117→    supportsOrgId: true,
+    70→   118→    supportsProjectId: true,
+    71→   119→  },
+    72→   120→  {
+    73→   121→    id: "anthropic",
+    74→   122→    name: "Anthropic",
+    75→   123→    baseUrl: "https://api.anthropic.com/v1",
+    76→   124→    docsUrl: "https://console.anthropic.com/settings/keys",
+    77→   125→    keyLabel: "Anthropic API Key",
+    78→   126→    keyPlaceholder: "sk-ant-xxxxxxxxxxxxxxxxxxxx",
+    79→   127→    description: "Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku",
+    80→   128→    authScheme: "x-api-key",
+    81→   129→    modelsEndpoint: "/models",
+    82→   130→    capabilities: { streaming: true, vision: true, embedding: false, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+    83→   131→  },
+    84→   132→  {
+    85→   133→    id: "gemini",
+    86→   134→    name: "Google Gemini",
+    87→   135→    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    88→   136→    docsUrl: "https://aistudio.google.com/app/apikey",
+    89→   137→    keyLabel: "Gemini API Key",
+    90→   138→    keyPlaceholder: "AIzaSyxxxxxxxxxxxxxxxxxxx",
+    91→   139→    description: "Gemini 2.0 Flash, Gemini 1.5 Pro, Gemini 1.5 Flash",
+    92→   140→    authScheme: "query",
+    93→   141→    modelsEndpoint: "/models",
+    94→   142→    capabilities: { streaming: true, vision: true, embedding: true, audio: true, image: true, video: true, reasoning: true, functionCalling: true },
+    95→   143→  },
+    96→   144→  {
+    97→   145→    id: "xai",
+    98→   146→    name: "xAI (Grok)",
+    99→   147→    baseUrl: "https://api.x.ai/v1",
+   100→   148→    docsUrl: "https://console.x.ai",
+   101→   149→    keyLabel: "xAI API Key",
+   102→   150→    keyPlaceholder: "xai-xxxxxxxxxxxxxxxxxxxx",
+   103→   151→    description: "Grok-2, Grok-2-mini, Grok-beta",
+   104→   152→    authScheme: "bearer",
+   105→   153→    modelsEndpoint: "/models",
+   106→   154→    capabilities: { streaming: true, vision: true, embedding: false, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+   107→   155→  },
+   108→   156→  {
+   109→   157→    id: "deepseek",
+   110→   158→    name: "DeepSeek",
+   111→   159→    baseUrl: "https://api.deepseek.com/v1",
+   112→   160→    docsUrl: "https://platform.deepseek.com/api_keys",
+   113→   161→    keyLabel: "DeepSeek API Key",
+   114→   162→    keyPlaceholder: "sk-xxxxxxxxxxxxxxxxxxxx",
+   115→   163→    description: "DeepSeek-V3, DeepSeek-R1 reasoning models",
+   116→   164→    authScheme: "bearer",
+   117→   165→    modelsEndpoint: "/models",
+   118→   166→    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+   119→   167→  },
+   120→   168→  {
+   121→   169→    id: "groq",
+   122→   170→    name: "Groq",
+   123→   171→    baseUrl: "https://api.groq.com/openai/v1",
+   124→   172→    docsUrl: "https://console.groq.com/keys",
+   125→   173→    keyLabel: "Groq API Key",
+   126→   174→    keyPlaceholder: "gsk_xxxxxxxxxxxxxxxxxxxx",
+   127→   175→    description: "Ultra-fast inference — Llama, Mixtral, Gemma",
+   128→   176→    authScheme: "bearer",
+   129→   177→    modelsEndpoint: "/models",
+   130→   178→    capabilities: { streaming: true, vision: false, embedding: false, audio: true, image: false, video: false, reasoning: false, functionCalling: true },
+   131→   179→  },
+   132→   180→  {
+   133→   181→    id: "mistral",
+   134→   182→    name: "Mistral AI",
+   135→   183→    baseUrl: "https://api.mistral.ai/v1",
+   136→   184→    docsUrl: "https://console.mistral.ai/api-keys",
+   137→   185→    keyLabel: "Mistral API Key",
+   138→   186→    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+   139→   187→    description: "Mistral Large, Codestral, Pixtral, Embed models",
+   140→   188→    authScheme: "bearer",
+   141→   189→    modelsEndpoint: "/models",
+   142→   190→    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+   143→   191→  },
+   144→   192→  {
+   145→   193→    id: "cohere",
+   146→   194→    name: "Cohere",
+   147→   195→    baseUrl: "https://api.cohere.com/v1",
+   148→   196→    docsUrl: "https://dashboard.cohere.com/api-keys",
+   149→   197→    keyLabel: "Cohere API Key",
+   150→   198→    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxx",
+   151→   199→    description: "Command R+, Command R, Embed, Rerank models",
+   152→   200→    authScheme: "bearer",
+   153→   201→    modelsEndpoint: "/models",
+   154→   202→    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+   155→   203→  },
+   156→   204→  {
+   157→   205→    id: "ollama",
+   158→   206→    name: "Ollama (Local)",
+   159→   207→    baseUrl: "http://localhost:11434/v1",
+   160→   208→    docsUrl: "https://ollama.com",
+   161→   209→    keyLabel: "API Key (optional)",
+   162→   210→    keyPlaceholder: "ollama (or leave blank)",
+   163→   211→    description: "Local LLM runtime — Llama, Mistral, Phi, Gemma & more",
+   164→   212→    authScheme: "none",
+   165→   213→    modelsEndpoint: "/models",
+   166→   214→    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
+   167→   215→  },
+   168→   216→  {
+   169→   217→    id: "lmstudio",
+   170→   218→    name: "LM Studio (Local)",
+   171→   219→    baseUrl: "http://localhost:1234/v1",
+   172→   220→    docsUrl: "https://lmstudio.ai",
+   173→   221→    keyLabel: "API Key (optional)",
+   174→   222→    keyPlaceholder: "lm-studio (or leave blank)",
+   175→   223→    description: "Local OpenAI-compatible server for any GGUF model",
+   176→   224→    authScheme: "none",
+   177→   225→    modelsEndpoint: "/models",
+   178→   226→    capabilities: { streaming: true, vision: false, embedding: false, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
+   179→   227→  },
+   180→   228→  {
+   181→   229→    id: "azure",
+   182→   230→    name: "Azure OpenAI",
+   183→   231→    baseUrl: "",
+   184→   232→    docsUrl: "https://oai.azure.com",
+   185→   233→    keyLabel: "Azure API Key",
+   186→   234→    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+   187→   235→    description: "GPT-4, DALL-E, Whisper on Azure (requires custom endpoint)",
+   188→   236→    authScheme: "bearer",
+   189→   237→    modelsEndpoint: "",
+   190→   238→    capabilities: { streaming: true, vision: true, embedding: true, audio: true, image: true, video: false, reasoning: true, functionCalling: true },
+   191→   239→    supportsRegion: true,
+   192→   240→  },
+   193→   241→  {
+   194→   242→    id: "bedrock",
+   195→   243→    name: "AWS Bedrock",
+   196→   244→    baseUrl: "",
+   197→   245→    docsUrl: "https://aws.amazon.com/bedrock",
+   198→   246→    keyLabel: "AWS Access Key ID",
+   199→   247→    keyPlaceholder: "AKIAxxxxxxxxxxxxxxxx",
+   200→   248→    description: "Claude, Llama, Titan, Mistral on AWS (requires custom config)",
+   201→   249→    authScheme: "bearer",
+   202→   250→    modelsEndpoint: "",
+   203→   251→    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
+   204→   252→    supportsRegion: true,
+   205→   253→  },
+   206→   254→  {
+   207→   255→    id: "together",
+   208→   256→    name: "Together AI",
+   209→   257→    baseUrl: "https://api.together.xyz/v1",
+   210→   258→    docsUrl: "https://api.together.xyz/settings/api-keys",
+   211→   259→    keyLabel: "Together API Key",
+   212→   260→    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+   213→   261→    description: "Llama, DeepSeek, Qwen, FLUX, Stable Diffusion",
+   214→   262→    authScheme: "bearer",
+   215→   263→    modelsEndpoint: "/models",
+   216→   264→    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
+   217→   265→  },
+   218→   266→  {
+   219→   267→    id: "fireworks",
+   220→   268→    name: "Fireworks AI",
+   221→   269→    baseUrl: "https://api.fireworks.ai/inference/v1",
+   222→   270→    docsUrl: "https://fireworks.ai/api-keys",
+   223→   271→    keyLabel: "Fireworks API Key",
+   224→   272→    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+   225→   273→    description: "Llama, Mixtral, DeepSeek, Qwen, FLUX",
+   226→   274→    authScheme: "bearer",
+   227→   275→    modelsEndpoint: "/models",
+   228→   276→    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
+   229→   277→  },
+   230→   278→  {
+   231→   279→    id: "cerebras",
+   232→   280→    name: "Cerebras",
+   233→   281→    baseUrl: "https://api.cerebras.ai/v1",
+   234→   282→    docsUrl: "https://cerebras.ai",
+   235→   283→    keyLabel: "Cerebras API Key",
+   236→   284→    keyPlaceholder: "csk-xxxxxxxxxxxxxxxxxxxx",
+   237→   285→    description: "Ultra-fast Llama, Qwen, Mistral inference",
+   238→   286→    authScheme: "bearer",
+   239→   287→    modelsEndpoint: "/models",
+   240→   288→    capabilities: { streaming: true, vision: false, embedding: false, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
+   241→   289→  },
+   242→   290→  {
+   243→   291→    id: "custom",
+   244→   292→    name: "Custom (OpenAI-compatible)",
+   245→   293→    baseUrl: "",
+   246→   294→    docsUrl: "",
+   247→   295→    keyLabel: "API Key",
+   248→   296→    keyPlaceholder: "Enter your API key",
+   249→   297→    description: "Any OpenAI-compatible endpoint — enter your own base URL",
+   250→   298→    authScheme: "bearer",
+   251→   299→    modelsEndpoint: "/models",
+   252→   300→    capabilities: { streaming: true, vision: false, embedding: false, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
+   253→   301→  },
+   254→   302→];
+   255→   303→
+   256→   304→export type AIProvider = (typeof AI_PROVIDERS)[number];
+   257→   305→
+   258→   306→export const IMAGE_SIZES = [
+   259→   307→  { id: "1024x1024", label: "Square", ratio: "1:1", use: "Logos · Avatars · Social" },
+   260→   308→  { id: "1344x768", label: "Landscape", ratio: "16:9", use: "Blogs · Headers · Ads" },
+   261→   309→  { id: "1440x720", label: "Wide", ratio: "2:1", use: "Hero · Banners · Covers" },
+   262→   310→  { id: "768x1344", label: "Portrait", ratio: "9:16", use: "Stories · Reels · Posters" },
+   263→   311→  { id: "1152x864", label: "Classic", ratio: "4:3", use: "Presentations · Docs" },
+   264→   312→  { id: "864x1152", label: "Tall", ratio: "3:4", use: "Flyers · Cards" },
+   265→   313→] as const;
+   266→   314→
+   267→   315→export const IMAGE_PRESETS = [
+   268→   316→  { id: "graphic", label: "Business Graphic", icon: "Image", hint: "Clean vector-style illustration for business decks" },
+   269→   317→  { id: "logo", label: "Logo / Mark", icon: "Hexagon", hint: "Minimal, scalable brand mark" },
+   270→   318→  { id: "ad", label: "Ad Creative", icon: "Megaphone", hint: "High-conversion social ad" },
+   271→   319→  { id: "social", label: "Social Post", icon: "Share2", hint: "Engaging social media visual" },
+   272→   320→  { id: "thumbnail", label: "YT Thumbnail", icon: "Youtube", hint: "Click-worthy YouTube thumbnail" },
+   273→   321→  { id: "hero", label: "Hero Image", icon: "Panorama", hint: "Website hero / banner" },
+   274→   322→] as const;
+   275→   323→
+   276→   324→export interface TemplateDef {
+   277→   325→  key: string;
+   278→   326→  name: string;
+   279→   327→  category: string;
+   280→   328→  icon: string;
+   281→   329→  kind: string;
+   282→   330→  description: string;
+   283→   331→  systemPrompt: string;
+   284→   332→  userPromptTpl: string;
+   285→   333→  fields: { key: string; label: string; placeholder: string; type?: "text" | "textarea"; default?: string }[];
+   286→   334→}
+   287→   335→
+   288→   336→export const TEMPLATES: TemplateDef[] = [
+   289→   337→  {
+   290→   338→    key: "business-plan",
+   291→   339→    name: "Business Plan",
+   292→   340→    category: "Strategy",
+   293→   341→    icon: "Target",
+   294→   342→    kind: "business-plan",
+   295→   343→    description: "Investor-ready one-pager with market, model & projections.",
+   296→   344→    systemPrompt:
+   297→   345→      "You are a senior business strategist and ex-McKinsey consultant. Produce a crisp, investor-ready business plan in clean Markdown. Use clear H2 sections, bullet points, and concrete numbers. Be pragmatic, avoid fluff.",
+   298→   346→    userPromptTpl:
+   299→   347→      "Write a business plan for: {idea}. Target audience / market: {market}. Founding stage: {stage}. Include: Problem, Solution, Market Size, Business Model, GTM Strategy, Competitive Edge, 12-month Financial Projection, Risks.",
+   300→   348→    fields: [
+   301→   349→      { key: "idea", label: "Business idea", placeholder: "AI-powered accounting for freelancers", type: "textarea", default: "AI-powered accounting platform for freelancers and small agencies" },
+   302→   350→      { key: "market", label: "Target market", placeholder: "Freelancers in North America & EU", default: "Freelancers and micro-agencies globally" },
+   303→   351→      { key: "stage", label: "Founding stage", placeholder: "Pre-seed / MVP", default: "Pre-seed, MVP shipping" },
+   304→   352→    ],
+   305→   353→  },
+   306→   354→  {
+   307→   355→    key: "sales-copy",
+   308→   356→    name: "Sales Copy",
+   309→   357→    category: "Marketing",
+   310→   358→    icon: "Megaphone",
+   311→   359→    kind: "sales-copy",
+   312→   360→    description: "High-conversion long-form sales page copy.",
+   313→   361→    systemPrompt:
+   314→   362→      "You are a direct-response copywriter trained on the classics. Write persuasive, benefit-driven long-form sales copy in Markdown. Use proven frameworks (PAS, AIDA). Include a headline, sub-headline, story, bullet benefits, FAQ, guarantee and a clear CTA.",
+   315→   363→    userPromptTpl:
+   316→   364→      "Write sales copy for: {product}. Audience: {audience}. Key benefit: {benefit}. Price: {price}. Brand voice: {voice}.",
+   317→   365→    fields: [
+   318→   366→      { key: "product", label: "Product / service", placeholder: "NexusAI all-in-one workspace", default: "NexusAI — the AI Business Operating System" },
+   319→   367→      { key: "audience", label: "Audience", placeholder: "Solo founders & agencies", default: "Agencies, freelancers and small business owners" },
+   320→   368→      { key: "benefit", label: "Key benefit", placeholder: "Replace 10 SaaS tools with one", default: "Replace 10 SaaS subscriptions with one workspace" },
+   321→   369→      { key: "price", label: "Price", placeholder: "$29/mo", default: "$29/mo Pro" },
+   322→   370→      { key: "voice", label: "Brand voice", placeholder: "Bold, friendly, confident", default: "Bold, confident, slightly playful" },
+   323→   371→    ],
+   324→   372→  },
+   325→   373→  {
+   326→   374→    key: "cold-email",
+   327→   375→    name: "Cold Email",
+   328→   376→    category: "Outreach",
+   329→   377→    icon: "Mail",
+   330→   378→    kind: "email",
+   331→   379→    description: "Personalised cold email with a hook & soft CTA.",
+   332→   380→    systemPrompt:
+   333→   381→      "You are a B2B sales SDR. Write concise, personalised cold emails. Max 120 words. One clear CTA. Friendly, specific, no spammy language. Output only the email body in Markdown.",
+   334→   382→    userPromptTpl:
+   335→   383→      "Write a cold email to {prospect} at {company}. Sender: {sender} from {sendercompany}. Value proposition: {value}. Goal: {goal}.",
+   336→   384→    fields: [
+   337→   385→      { key: "prospect", label: "Prospect name / role", placeholder: "Sarah, Head of Growth", default: "Sarah, Head of Growth" },
+   338→   386→      { key: "company", label: "Prospect company", placeholder: "Acme Inc.", default: "Acme Inc." },
+   339→   387→      { key: "sender", label: "Your name", placeholder: "Alex", default: "Alex" },
+   340→   388→      { key: "sendercompany", label: "Your company", placeholder: "NexusAI", default: "NexusAI" },
+   341→   389→      { key: "value", label: "Value proposition", placeholder: "Cut tool spend by 60%", default: "Consolidate 10 AI tools into one workspace, cut SaaS spend ~60%" },
+   342→   390→      { key: "goal", label: "Goal of the email", placeholder: "Book a 15-min demo", default: "Book a 15-minute demo" },
+   343→   391→    ],
+   344→   392→  },
+   345→   393→  {
+   346→   394→    key: "blog-post",
+   347→   395→    name: "Blog Post",
+   348→   396→    category: "Content",
+   349→   397→    icon: "FileText",
+   350→   398→    kind: "blog",
+   351→   399→    description: "SEO-structured long-form article with H2/H3.",
+   352→   400→    systemPrompt:
+   353→   401→      "You are an expert content marketer and SEO writer. Write a comprehensive, well-structured blog post in Markdown. Include an engaging intro, H2/H3 sections, bullet lists, a FAQ, and a conclusion. Naturally weave the target keyword.",
+   354→   402→    userPromptTpl:
+   355→   403→      "Write a {wordcount}-word blog post about: {topic}. Target keyword: {keyword}. Audience: {audience}. Tone: {tone}.",
+   356→   404→    fields: [
+   357→   405→      { key: "topic", label: "Topic", placeholder: "How AI is changing small business ops", type: "textarea", default: "How AI is changing small business operations in 2025" },
+   358→   406→      { key: "keyword", label: "Target keyword", placeholder: "ai for small business", default: "ai for small business" },
+   359→   407→      { key: "audience", label: "Audience", placeholder: "Small business owners", default: "Small business owners and operators" },
+   360→   408→      { key: "tone", label: "Tone", placeholder: "Practical, authoritative", default: "Practical, authoritative, encouraging" },
+   361→   409→      { key: "wordcount", label: "Word count", placeholder: "1200", default: "1200" },
+   362→   410→    ],
+   363→   411→  },
+   364→   412→  {
+   365→   413→    key: "contract",
+   366→   414→    name: "Service Contract",
+   367→   415→    category: "Legal",
+   368→   416→    icon: "Scale",
+   369→   417→    kind: "contract",
+   370→   418→    description: "Plain-English freelance service agreement.",
+   371→   419→    systemPrompt:
+   372→   420→      "You are a legal drafter specialising in plain-English contracts for freelancers and small agencies. Produce a balanced service agreement in Markdown with numbered clauses. Include placeholders in [BRACKETS] for jurisdiction-specific signatures. Add a disclaimer that this is a template, not legal advice.",
+   373→   421→    userPromptTpl:
+   374→   422→      "Draft a freelance service agreement. Client: {client}. Provider: {provider}. Scope of work: {scope}. Total fee: {fee}. Delivery timeline: {timeline}.",
+   375→   423→    fields: [
+   376→   424→      { key: "client", label: "Client name", placeholder: "Acme Inc.", default: "Acme Inc." },
+   377→   425→      { key: "provider", label: "Provider (you)", placeholder: "Jane Doe Studio", default: "Jane Doe Studio" },
+   378→   426→      { key: "scope", label: "Scope of work", placeholder: "Brand identity + landing page", type: "textarea", default: "Brand identity design and a single-page landing website" },
+   379→   427→      { key: "fee", label: "Total fee", placeholder: "$4,500", default: "$4,500 USD" },
+   380→   428→      { key: "timeline", label: "Timeline", placeholder: "4 weeks", default: "4 weeks from kickoff" },
+   381→   429→    ],
+   382→   430→  },
+   383→   431→  {
+   384→   432→    key: "weekly-report",
+   385→   433→    name: "Weekly Report",
+   386→   434→    category: "Ops",
+   387→   435→    icon: "BarChart3",
+   388→   436→    kind: "report",
+   389→   437→    description: "Executive weekly status report.",
+   390→   438→    systemPrompt:
+   391→   439→      "You are a chief of staff. Write a concise weekly executive report in Markdown. Sections: Highlights, Key Metrics, Blockers, Next Week's Priorities. Be specific and quantitative where possible.",
+   392→   440→    userPromptTpl:
+   393→   441→      "Write a weekly report. Team: {team}. Wins this week: {wins}. Key metrics: {metrics}. Blockers: {blockers}.",
+   394→   442→    fields: [
+   395→   443→      { key: "team", label: "Team / function", placeholder: "Growth", default: "Growth team" },
+   396→   444→      { key: "wins", label: "Wins this week", placeholder: "Shipped v2 onboarding, +12% signups", type: "textarea", default: "Shipped v2 onboarding flow, signups +12% WoW" },
+   397→   445→      { key: "metrics", label: "Key metrics", placeholder: "MRR $42k, churn 1.8%", type: "textarea", default: "MRR $42k, churn 1.8%, NPS 58" },
+   398→   446→      { key: "blockers", label: "Blockers", placeholder: "Payment provider review pending", type: "textarea", default: "Payment provider review pending, blocking EU launch" },
+   399→   447→    ],
+   400→   448→  },
+   401→   449→];
+   402→   450→
+   403→   451→export interface AgentDef {
+   404→   452→  key: string;
+   405→   453→  name: string;
+   406→   454→  description: string;
+   407→   455→  icon: string;
+   408→   456→  category: string;
+   409→   457→  color: string;
+   410→   458→  systemPrompt: string;
+   411→   459→  capabilities: string[];
+   412→   460→}
+   413→   461→
+   414→   462→export const AGENTS: AgentDef[] = [
+   415→   463→  {
+   416→   464→    key: "business-consultant",
+   417→   465→    name: "Business Consultant",
+   418→   466→    description: "Strategy, pricing, positioning & growth advice.",
+   419→   467→    icon: "Briefcase",
+   420→   468→    category: "Strategy",
+   421→   469→    color: "emerald",
+   422→   470→    systemPrompt:
+   423→   471→      "You are NexusAI's Business Consultant — a seasoned ex-McKinsey advisor for small businesses and startups. Ask clarifying questions when context is missing. Give specific, prioritised, ROI-aware advice. Use frameworks (ICE, RICE, Porter). Always end with 3 concrete next actions.",
+   424→   472→    capabilities: ["Strategy", "Pricing", "Positioning", "Growth", "Market sizing"],
+   425→   473→  },
+   426→   474→  {
+   427→   475→    key: "marketing-agent",
+   428→   476→    name: "Marketing Agent",
+   429→   477→    description: "Campaign plans, ad copy, funnels & brand voice.",
+   430→   478→    icon: "Megaphone",
+   431→   479→    category: "Marketing",
+   432→   480→    color: "rose",
+   433→   481→    systemPrompt:
+   434→   482→      "You are NexusAI's Marketing Agent — a senior growth marketer. Produce channel-specific, conversion-focused plans and copy. Reference real benchmarks. Provide a measurable success metric for every recommendation.",
+   435→   483→    capabilities: ["Campaigns", "Ad copy", "Funnels", "Email", "Brand voice"],
+   436→   484→  },
+   437→   485→  {
+   438→   486→    key: "seo-agent",
+   439→   487→    name: "SEO Agent",
+   440→   488→    description: "Keyword research, topic clusters & on-page SEO.",
+   441→   489→    icon: "Search",
+   442→   490→    category: "Growth",
+   443→   491→    color: "amber",
+   444→   492→    systemPrompt:
+   445→   493→      "You are NexusAI's SEO Agent. Provide keyword clusters with intent, estimated difficulty, and a content brief. Cite realistic ranges. Output structured Markdown tables.",
+   446→   494→    capabilities: ["Keyword research", "Topic clusters", "On-page SEO", "Schema", "Audits"],
+   447→   495→  },
+   448→   496→  {
+   449→   497→    key: "research-agent",
+   450→   498→    name: "Research Agent",
+   451→   499→    description: "Deep research, summaries & competitor analysis.",
+   452→   500→    icon: "Microscope",
+   453→   501→    category: "Research",
+   454→   502→    color: "cyan",
+   455→   503→    systemPrompt:
+   456→   504→      "You are NexusAI's Research Agent. Synthesise information with sources, highlight uncertainty, and produce structured executive briefs. Distinguish facts from assumptions.",
+   457→   505→    capabilities: ["Market research", "Competitor analysis", "Summaries", "Briefs"],
+   458→   506→  },
+   459→   507→  {
+   460→   508→    key: "coding-agent",
+   461→   509→    name: "Coding Agent",
+   462→   510→    description: "Architecture, code review, debugging & scaffolding.",
+   463→   511→    icon: "Code2",
+   464→   512→    category: "Engineering",
+   465→   513→    color: "violet",
+   466→   514→    systemPrompt:
+   467→   515→      "You are NexusAI's Coding Agent — a staff engineer. Write clean, typed, production-grade code. Explain trade-offs. Prefer simplicity and existing ecosystem libraries. Include brief comments only where intent isn't obvious.",
+   468→   516→    capabilities: ["Code review", "Debugging", "Architecture", "Scaffolding"],
+   469→   517→  },
+   470→   518→  {
+   471→   519→    key: "support-agent",
+   472→   520→    name: "Customer Support",
+   473→   521→    description: "Empathetic replies, macros & escalation paths.",
+   474→   522→    icon: "Headset",
+   475→   523→    category: "Support",
+   476→   524→    color: "sky",
+   477→   525→    systemPrompt:
+   478→   526→      "You are NexusAI's Customer Support Agent. Be empathetic, concise and solution-first. Never invent policy. Escalate legal/billing edge cases. Always confirm the customer's core issue before answering.",
+   479→   527→    capabilities: ["Ticket replies", "Macros", "Escalation", "Tone"],
+   480→   528→  },
+   481→   529→  {
+   482→   530→    key: "wordpress-agent",
+   483→   531→    name: "WordPress Agent",
+   484→   532→    description: "Site structure, plugins, SEO & custom code snippets.",
+   485→   533→    icon: "Globe",
+   486→   534→    category: "Web",
+   487→   535→    color: "teal",
+   488→   536→    systemPrompt:
+   489→   537→      "You are NexusAI's WordPress Agent. Recommend lightweight, maintainable approaches. Prefer core/block editor and reputable plugins over custom code. Provide exact hooks/filters and version-safe snippets.",
+   490→   538→    capabilities: ["Site structure", "Plugins", "Custom code", "Performance"],
+   491→   539→  },
+   492→   540→  {
+   493→   541→    key: "youtube-agent",
+   494→   542→    name: "YouTube Agent",
+   495→   543→    description: "Titles, scripts, hooks & retention tactics.",
+   496→   544→    icon: "Youtube",
+   497→   545→    category: "Content",
+   498→   546→    color: "red",
+   499→   547→    systemPrompt:
+   500→   548→      "You are NexusAI's YouTube Agent. Produce scroll-stopping titles, tight scripts with retention hooks every 30s, and SEO-optimised descriptions. Give a predicted click-through rationale.",
+   501→   549→    capabilities: ["Titles", "Scripts", "Hooks", "SEO", "Thumbnails ideas"],
+   502→   550→  },
+   503→   551→];
+   504→   552→
+   505→   553→export const PLANS = [
+   506→   554→  {
+   507→   555→    id: "free",
+   508→   556→    name: "Free",
+   509→   557→    price: 0,
+   510→   558→    credits: 200,
+   511→   559→    cadence: "daily",
+   512→   560→    tagline: "For trying the platform",
+   513→   561→    features: ["200 daily credits", "All AI modules", "3 projects", "Community support"],
+   514→   562→    cta: "Current plan",
+   515→   563→  },
+   516→   564→  {
+   517→   565→    id: "starter",
+   518→   566→    name: "Starter",
+   519→   567→    price: 19,
+   520→   568→    credits: 5000,
+   521→   569→    cadence: "monthly",
+   522→   570→    tagline: "For solo creators",
+   523→   571→    features: ["5,000 credits / mo", "All modules", "Unlimited projects", "Priority models", "Email support"],
+   524→   572→    cta: "Upgrade",
+   525→   573→    popular: false,
+   526→   574→  },
+   527→   575→  {
+   528→   576→    id: "pro",
+   529→   577→    name: "Pro",
+   530→   578→    price: 49,
+   531→   579→    credits: 20000,
+   532→   580→    cadence: "monthly",
+   533→   581→    tagline: "For power users & freelancers",
+   534→   582→    features: ["20,000 credits / mo", "Everything in Starter", "AI Agents", "Brand voice", "Export PDF/DOCX", "API access"],
+   535→   583→    cta: "Upgrade",
+   536→   584→    popular: true,
+   537→   585→  },
+   538→   586→  {
+   539→   587→    id: "agency",
+   540→   588→    name: "Agency",
+   541→   589→    price: 149,
+   542→   590→    credits: 100000,
+   543→   591→    cadence: "monthly",
+   544→   592→    tagline: "For teams & agencies",
+   545→   593→    features: ["100,000 credits / mo", "Everything in Pro", "5 team seats", "White-label", "Workspaces", "Dedicated support"],
+   546→   594→    cta: "Talk to sales",
+   547→   595→  },
+   548→   596→] as const;
+   549→   597→
+   550→   598→export const CREDIT_COSTS = {
+   551→   599→  chat: 1,
+   552→   600→  image: 8,
+   553→   601→  document: 5,
+   554→   602→} as const;
+   555→   603→
+   556→   604→export const FOLDER_COLORS = [
+   557→   605→  { id: "emerald", label: "Emerald", dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+   558→   606→  { id: "amber", label: "Amber", dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
+   559→   607→  { id: "rose", label: "Rose", dot: "bg-rose-500", text: "text-rose-600 dark:text-rose-400" },
+   560→   608→  { id: "teal", label: "Teal", dot: "bg-teal-500", text: "text-teal-600 dark:text-teal-400" },
+   561→   609→  { id: "violet", label: "Violet", dot: "bg-violet-500", text: "text-violet-600 dark:text-violet-400" },
+   562→   610→  { id: "sky", label: "Sky", dot: "bg-sky-500", text: "text-sky-600 dark:text-sky-400" },
+   563→   611→  { id: "slate", label: "Slate", dot: "bg-slate-500", text: "text-slate-600 dark:text-slate-400" },
+   564→   612→] as const;
+   565→   613→
+   566→   614→/** Per-model credit cost overrides (chat). Default falls back to CREDIT_COSTS.chat. */
+   567→   615→export const MODEL_CREDIT_COST: Record<string, number> = {
+   568→   616→  auto: 1,
+   569→   617→  "glm-4.6": 1,
+   570→   618→  "glm-4.5": 1,
+   571→   619→  "glm-4.5v": 2,
+   572→   620→  "deepseek-v3": 3,
+   573→   621→};
+   574→   622→
+   575→   623→/** Plan feature flags for client-side gating. */
+   576→   624→export const PLAN_FEATURES = {
+   577→   625→  free: {
+   578→   626→    maxChats: 50,
+   579→   627→    maxProjects: 1,
+   580→   628→    brandVoices: 0,
+   581→   629→    proModels: false,
+   582→   630→    exports: false,
+   583→   631→    apiAccess: false,
+   584→   632→    watermarked: true,
+   585→   633→  },
+   586→   634→  starter: {
+   587→   635→    maxChats: 500,
+   588→   636→    maxProjects: 5,
+   589→   637→    brandVoices: 1,
+   590→   638→    proModels: false,
+   591→   639→    exports: false,
+   592→   640→    apiAccess: false,
+   593→   641→    watermarked: false,
+   594→   642→  },
+   595→   643→  pro: {
+   596→   644→    maxChats: Infinity,
+   597→   645→    maxProjects: Infinity,
+   598→   646→    brandVoices: 10,
+   599→   647→    proModels: true,
+   600→   648→    exports: true,
+   601→   649→    apiAccess: true,
+   602→   650→    watermarked: false,
+   603→   651→  },
+   604→   652→  agency: {
+   605→   653→    maxChats: Infinity,
+   606→   654→    maxProjects: Infinity,
+   607→   655→    brandVoices: Infinity,
+   608→   656→    proModels: true,
+   609→   657→    exports: true,
+   610→   658→    apiAccess: true,
+   611→   659→    watermarked: false,
+   612→   660→  },
+   613→   661→} as const;
+   614→   662→
+   615→   663→export type PlanId = keyof typeof PLAN_FEATURES;
+   616→   664→
+   617→   665→

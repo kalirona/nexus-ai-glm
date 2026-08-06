@@ -49,10 +49,36 @@ export const AI_MODELS = [
 export type AIModel = (typeof AI_MODELS)[number];
 
 /**
- * Known AI providers. Selecting one auto-fills the base URL and the
- * OpenAI-compatible endpoint path. "custom" lets admins enter any URL.
+ * Known AI providers with full capability metadata.
+ * Selecting one auto-fills the base URL, auth scheme, and capability flags.
+ * "custom" lets admins enter any OpenAI-compatible endpoint.
  */
-export const AI_PROVIDERS = [
+export interface ProviderDef {
+  id: string;
+  name: string;
+  baseUrl: string;
+  docsUrl: string;
+  keyLabel: string;
+  keyPlaceholder: string;
+  description: string;
+  authScheme: "bearer" | "x-api-key" | "query" | "none";
+  modelsEndpoint: string; // relative path for GET /models; empty = not supported
+  capabilities: {
+    streaming: boolean;
+    vision: boolean;
+    embedding: boolean;
+    audio: boolean;
+    image: boolean;
+    video: boolean;
+    reasoning: boolean;
+    functionCalling: boolean;
+  };
+  supportsOrgId?: boolean;
+  supportsProjectId?: boolean;
+  supportsRegion?: boolean;
+}
+
+export const AI_PROVIDERS: ProviderDef[] = [
   {
     id: "zai",
     name: "Z.ai",
@@ -61,6 +87,9 @@ export const AI_PROVIDERS = [
     keyLabel: "Z.ai API Key",
     keyPlaceholder: "zai-xxxxxxxxxxxxxxxxxxxx",
     description: "GLM models — GLM-4.6, GLM-4.5, GLM-4.5V, DeepSeek V3",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
   },
   {
     id: "openrouter",
@@ -70,6 +99,9 @@ export const AI_PROVIDERS = [
     keyLabel: "OpenRouter API Key",
     keyPlaceholder: "sk-or-xxxxxxxxxxxxxxxxxxxx",
     description: "200+ models — GPT, Claude, Gemini, Llama, Mistral & more",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: false, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
   },
   {
     id: "openai",
@@ -78,7 +110,48 @@ export const AI_PROVIDERS = [
     docsUrl: "https://platform.openai.com/api-keys",
     keyLabel: "OpenAI API Key",
     keyPlaceholder: "sk-xxxxxxxxxxxxxxxxxxxx",
-    description: "GPT-4o, GPT-4o-mini, o1, o3-mini & more",
+    description: "GPT-4o, GPT-4o-mini, o1, o3-mini, DALL-E, Whisper, TTS",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: true, audio: true, image: true, video: false, reasoning: true, functionCalling: true },
+    supportsOrgId: true,
+    supportsProjectId: true,
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    baseUrl: "https://api.anthropic.com/v1",
+    docsUrl: "https://console.anthropic.com/settings/keys",
+    keyLabel: "Anthropic API Key",
+    keyPlaceholder: "sk-ant-xxxxxxxxxxxxxxxxxxxx",
+    description: "Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku",
+    authScheme: "x-api-key",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: false, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+  },
+  {
+    id: "gemini",
+    name: "Google Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    docsUrl: "https://aistudio.google.com/app/apikey",
+    keyLabel: "Gemini API Key",
+    keyPlaceholder: "AIzaSyxxxxxxxxxxxxxxxxxxx",
+    description: "Gemini 2.0 Flash, Gemini 1.5 Pro, Gemini 1.5 Flash",
+    authScheme: "query",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: true, audio: true, image: true, video: true, reasoning: true, functionCalling: true },
+  },
+  {
+    id: "xai",
+    name: "xAI (Grok)",
+    baseUrl: "https://api.x.ai/v1",
+    docsUrl: "https://console.x.ai",
+    keyLabel: "xAI API Key",
+    keyPlaceholder: "xai-xxxxxxxxxxxxxxxxxxxx",
+    description: "Grok-2, Grok-2-mini, Grok-beta",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: false, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
   },
   {
     id: "deepseek",
@@ -88,6 +161,9 @@ export const AI_PROVIDERS = [
     keyLabel: "DeepSeek API Key",
     keyPlaceholder: "sk-xxxxxxxxxxxxxxxxxxxx",
     description: "DeepSeek-V3, DeepSeek-R1 reasoning models",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
   },
   {
     id: "groq",
@@ -97,6 +173,119 @@ export const AI_PROVIDERS = [
     keyLabel: "Groq API Key",
     keyPlaceholder: "gsk_xxxxxxxxxxxxxxxxxxxx",
     description: "Ultra-fast inference — Llama, Mixtral, Gemma",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: false, audio: true, image: false, video: false, reasoning: false, functionCalling: true },
+  },
+  {
+    id: "mistral",
+    name: "Mistral AI",
+    baseUrl: "https://api.mistral.ai/v1",
+    docsUrl: "https://console.mistral.ai/api-keys",
+    keyLabel: "Mistral API Key",
+    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+    description: "Mistral Large, Codestral, Pixtral, Embed models",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+  },
+  {
+    id: "cohere",
+    name: "Cohere",
+    baseUrl: "https://api.cohere.com/v1",
+    docsUrl: "https://dashboard.cohere.com/api-keys",
+    keyLabel: "Cohere API Key",
+    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxx",
+    description: "Command R+, Command R, Embed, Rerank models",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: false, video: false, reasoning: true, functionCalling: true },
+  },
+  {
+    id: "ollama",
+    name: "Ollama (Local)",
+    baseUrl: "http://localhost:11434/v1",
+    docsUrl: "https://ollama.com",
+    keyLabel: "API Key (optional)",
+    keyPlaceholder: "ollama (or leave blank)",
+    description: "Local LLM runtime — Llama, Mistral, Phi, Gemma & more",
+    authScheme: "none",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
+  },
+  {
+    id: "lmstudio",
+    name: "LM Studio (Local)",
+    baseUrl: "http://localhost:1234/v1",
+    docsUrl: "https://lmstudio.ai",
+    keyLabel: "API Key (optional)",
+    keyPlaceholder: "lm-studio (or leave blank)",
+    description: "Local OpenAI-compatible server for any GGUF model",
+    authScheme: "none",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: false, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
+  },
+  {
+    id: "azure",
+    name: "Azure OpenAI",
+    baseUrl: "",
+    docsUrl: "https://oai.azure.com",
+    keyLabel: "Azure API Key",
+    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+    description: "GPT-4, DALL-E, Whisper on Azure (requires custom endpoint)",
+    authScheme: "bearer",
+    modelsEndpoint: "",
+    capabilities: { streaming: true, vision: true, embedding: true, audio: true, image: true, video: false, reasoning: true, functionCalling: true },
+    supportsRegion: true,
+  },
+  {
+    id: "bedrock",
+    name: "AWS Bedrock",
+    baseUrl: "",
+    docsUrl: "https://aws.amazon.com/bedrock",
+    keyLabel: "AWS Access Key ID",
+    keyPlaceholder: "AKIAxxxxxxxxxxxxxxxx",
+    description: "Claude, Llama, Titan, Mistral on AWS (requires custom config)",
+    authScheme: "bearer",
+    modelsEndpoint: "",
+    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
+    supportsRegion: true,
+  },
+  {
+    id: "together",
+    name: "Together AI",
+    baseUrl: "https://api.together.xyz/v1",
+    docsUrl: "https://api.together.xyz/settings/api-keys",
+    keyLabel: "Together API Key",
+    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+    description: "Llama, DeepSeek, Qwen, FLUX, Stable Diffusion",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
+  },
+  {
+    id: "fireworks",
+    name: "Fireworks AI",
+    baseUrl: "https://api.fireworks.ai/inference/v1",
+    docsUrl: "https://fireworks.ai/api-keys",
+    keyLabel: "Fireworks API Key",
+    keyPlaceholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
+    description: "Llama, Mixtral, DeepSeek, Qwen, FLUX",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: true, embedding: true, audio: false, image: true, video: false, reasoning: true, functionCalling: true },
+  },
+  {
+    id: "cerebras",
+    name: "Cerebras",
+    baseUrl: "https://api.cerebras.ai/v1",
+    docsUrl: "https://cerebras.ai",
+    keyLabel: "Cerebras API Key",
+    keyPlaceholder: "csk-xxxxxxxxxxxxxxxxxxxx",
+    description: "Ultra-fast Llama, Qwen, Mistral inference",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: false, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
   },
   {
     id: "custom",
@@ -106,8 +295,11 @@ export const AI_PROVIDERS = [
     keyLabel: "API Key",
     keyPlaceholder: "Enter your API key",
     description: "Any OpenAI-compatible endpoint — enter your own base URL",
+    authScheme: "bearer",
+    modelsEndpoint: "/models",
+    capabilities: { streaming: true, vision: false, embedding: false, audio: false, image: false, video: false, reasoning: false, functionCalling: true },
   },
-] as const;
+];
 
 export type AIProvider = (typeof AI_PROVIDERS)[number];
 

@@ -14,7 +14,8 @@ export type ModuleKey =
   | "youtube"
   | "billing"
   | "settings"
-  | "admin";
+  | "admin"
+  | "ai-infra";
 
 export interface PendingAgent {
   key: string;
