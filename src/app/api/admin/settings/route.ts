@@ -12,6 +12,7 @@ export async function GET() {
   const settings: PlatformSettings = {
     providerKey: "", // never return the raw key
     providerKeyMasked: await getSetting("providerKeyMasked", ""),
+    baseUrl: await getSetting("baseUrl", DEFAULT_SETTINGS.baseUrl),
     enabledModels: await getSetting("enabledModels", DEFAULT_SETTINGS.enabledModels),
     rateLimitPerMin: await getSetting("rateLimitPerMin", DEFAULT_SETTINGS.rateLimitPerMin),
     rateLimitPerDay: await getSetting("rateLimitPerDay", DEFAULT_SETTINGS.rateLimitPerDay),
@@ -44,6 +45,11 @@ export async function PATCH(req: Request) {
     await setSetting("providerKey", key);
     await setSetting("providerKeyMasked", masked);
     changed.push("providerKey");
+  }
+
+  if (typeof body.baseUrl === "string") {
+    await setSetting("baseUrl", body.baseUrl.trim());
+    changed.push("baseUrl");
   }
 
   if (Array.isArray(body.enabledModels)) {

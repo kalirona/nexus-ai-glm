@@ -185,3 +185,45 @@ Stage Summary:
 - Security controls (rate limits, IP allowlist, verification, abuse protection) and performance controls (caching, concurrency, timeouts) are live and persisted.
 - Collapsed sidebar brand spacing fixed; overall sidebar spacing improved to SaaS-grade.
 - Next: Phase 2 real auth/payments, Phase 3 SEO/Marketing/YouTube workspaces.
+
+---
+Task ID: 6
+Agent: lead-architect (main)
+Task: Remove footer between pages, deduplicate Super Admin (remove from Settings), enhance AI settings with base URL + test connection + model dropdown pulling real data.
+
+Work Log:
+- **Removed footer from between pages** (`src/components/shell/app-shell.tsx`): deleted the `<Footer />` from the main scroll area. Real SaaS dashboards don't render a footer inside the content area — it was appearing between every page. The main area is now a clean scrollable container with just the module content.
+- **Removed Super Admin from normal Settings** (`src/features/settings/settings-view.tsx`):
+  - Removed the `admin` TabId, the admin tab entry, the `adminOnly` Crown icon, the "Super Admin" badge from the header, the `activeTab === "admin"` render line.
+  - Deleted the `AdminStats`/`AdminUser` interfaces and the `AdminTab`/`AdminOverview`/`AdminUsers`/`AdminSystem` functions (~390 lines removed).
+  - Settings now has only 4 tabs: Account, Brand Voice, API Keys, Danger Zone — no duplication.
+- **Expanded the standalone Super Admin module** (`src/features/admin/admin-view.tsx`) to 6 sections (was 3):
+  - **Overview** (migrated): platform metrics (users, MRR, active, suspended, pro, agency, credits, chats) + 7-day credit usage bar chart.
+  - **Users** (migrated): searchable/filterable user table with plan selector, +1k credits grant, suspend/activate.
+  - **AI Models** (enhanced): provider key + **base URL** field + **test connection** button + **model dropdown** that appears after a successful test showing the real allowed models.
+  - **Security**: rate limits, IP allowlist, verification/abuse/proxy toggles.
+  - **Performance**: caching, concurrency, timeout controls + live stat cards.
+  - **System** (migrated): platform flags (signups, maintenance), credit economy config, audit log feed.
+- **Enhanced AI settings with base URL + test connection + model dropdown**:
+  - Added `baseUrl` field to `DEFAULT_SETTINGS` (default `https://api.z.ai/api/paas/v4`).
+  - Updated `/api/admin/settings` GET + PATCH to handle `baseUrl`.
+  - Rewrote `/api/admin/models/test` to:
+    - Accept `apiKey` + `baseUrl` in the body (overrides saved values).
+    - Fall back to the SDK (`ZAI.create()` which reads from env) when no explicit key is configured — so admins can test the connection immediately.
+    - Use raw `fetch` with the provided key + base URL when a key IS configured.
+    - Probe each model with a tiny "ping" completion; return per-model availability + latency.
+    - Return the `allowed` list of model IDs that responded successfully.
+  - The frontend "Test & pull" button: calls the test endpoint, shows a dropdown of allowed models (real data), shows per-model results with latency, auto-enables available models.
+- Verified with agent-browser:
+  - No footer between pages (grep for footer/Enterprise-grade/Built with/© 2026 = empty).
+  - Settings has 4 tabs only (Account, Brand Voice, API Keys, Danger Zone) — no Super Admin.
+  - Super Admin module has 6 sections (Overview, Users, AI Models, Security, Performance, System).
+  - AI Models: base URL field shows `https://api.z.ai/api/paas/v4`, "Test & pull" successfully probed all 5 models (5/5 available with real latencies: GLM-4.6 2481ms, GLM-4.5 1148ms, GLM-4.5 Vision 21199ms, DeepSeek V3 2145ms), dropdown shows "5 models available" with real model names + context sizes.
+  - Users section shows real demo users with plan/status/actions.
+  - ESLint clean, no runtime errors.
+
+Stage Summary:
+- Footer removed from between pages — clean SaaS dashboard layout.
+- Super Admin is no longer duplicated: removed from Settings, consolidated into the standalone Super Admin sidebar section with all 6 sections.
+- AI settings now have proper all settings: API key, base URL, test connection, and a model dropdown that pulls real allowed models from the backend after testing.
+- Next: Phase 2 real auth/payments, Phase 3 SEO/Marketing/YouTube workspaces.

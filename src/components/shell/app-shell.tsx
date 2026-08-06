@@ -4,7 +4,6 @@ import { Suspense, lazy } from "react";
 import { Sidebar, MobileSidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { CommandPalette } from "@/components/shell/command-palette";
-import { Footer } from "@/components/shell/footer";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { PaywallModal } from "@/components/paywall/paywall-modal";
 import { useWorkspace } from "@/store/workspace";
@@ -46,23 +45,20 @@ export function AppShell() {
       <MobileSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 overflow-y-auto scroll-thin pb-20 md:pb-0 flex flex-col">
-          <div className="flex-1 min-h-0 flex flex-col">
-            <Suspense fallback={<ModuleSkeleton />}>
-              {activeModule === "dashboard" && <DashboardView />}
-              {activeModule === "chat" && <ChatView />}
-              {activeModule === "documents" && <DocumentsView />}
-              {activeModule === "images" && <ImagesView />}
-              {activeModule === "agents" && <AgentsView />}
-              {activeModule === "billing" && <BillingView />}
-              {activeModule === "settings" && <SettingsView />}
-              {activeModule === "admin" && <AdminView />}
-              {(activeModule === "seo" || activeModule === "marketing" || activeModule === "youtube") && (
-                <ComingSoon module={activeModule} />
-              )}
-            </Suspense>
-          </div>
-          <Footer />
+        <main className="flex-1 overflow-y-auto scroll-thin pb-20 md:pb-0">
+          <Suspense fallback={<ModuleSkeleton />}>
+            {activeModule === "dashboard" && <DashboardView />}
+            {activeModule === "chat" && <ChatView />}
+            {activeModule === "documents" && <DocumentsView />}
+            {activeModule === "images" && <ImagesView />}
+            {activeModule === "agents" && <AgentsView />}
+            {activeModule === "billing" && <BillingView />}
+            {activeModule === "settings" && <SettingsView />}
+            {activeModule === "admin" && <AdminView />}
+            {(activeModule === "seo" || activeModule === "marketing" || activeModule === "youtube") && (
+              <ComingSoon module={activeModule} />
+            )}
+          </Suspense>
         </main>
       </div>
       <MobileNav />

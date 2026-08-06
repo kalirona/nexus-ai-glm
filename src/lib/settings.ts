@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS = {
   // AI provider
   providerKey: "", // saved API key (masked in UI)
   providerKeyMasked: "",
+  baseUrl: "https://api.z.ai/api/paas/v4", // AI provider base URL
   enabledModels: ["auto", "glm-4.6", "glm-4.5", "glm-4.5v", "deepseek-v3"],
   // Security
   rateLimitPerMin: 60,
