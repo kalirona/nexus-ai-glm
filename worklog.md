@@ -408,3 +408,40 @@ Stage Summary:
 - Every AI request is logged to AiUsageLog for real usage analytics.
 - All 9 tabs are functional with real API data — no placeholders, no dead buttons.
 - Next: enforce limits at runtime, wire routing rules into ai.ts, add real auth, Phase 3 workspaces.
+
+---
+Task ID: 11 (Phase 2.8)
+Agent: lead-architect (main)
+Task: Build production AI Gateway with three-layer model system, real provider synchronization, verification, approval, routing engine.
+
+Work Log:
+- **AiModel Prisma model**: 30+ fields including providerId, modelId, displayName, owner, category, contextWindow, maxOutputTokens, inputCostPerM, outputCostPerM, supportsStreaming/Vision/FunctionCalling/JsonMode/Embeddings/Audio/Images/Video/Reasoning, capabilityTags, three-layer state (verificationStatus, enabled, approved, isDefault, defaultCapability), health (healthStatus, avgLatencyMs, lastHealthCheck), sync metadata (lastSyncAt, lastVerifiedAt). Unique constraint on [providerId, modelId].
+- **Sync engine** (`src/lib/sync-engine.ts`):
+  - `syncProviderModels(providerId)` — fetches live model catalog from provider API, compares with DB, adds new models, updates existing, marks missing as unavailable, generates sync report (catalogModels, verified, approved, newModels, updatedModels, unavailable, deprecated, removed, duration).
+  - `verifyModel(modelDbId)` — sends lightweight completion request to validate usability, updates verificationStatus + healthStatus + avgLatencyMs.
+  - `resolveModelForCapability(capability, preferredModelId?)` — routing engine: only selects models that are approved + enabled + verified + healthy. Falls back: preferred → default → any approved.
+  - `getApprovedModels()` — returns ONLY approved + enabled models for user-facing selectors.
+  - Provider key resolution with legacy fallback (apiKeys[] encrypted → providerKey plaintext).
+- **API routes**:
+  - `GET /api/admin/models/registry` — all models with layer/provider/search filters + counts
+  - `PATCH /api/admin/models/registry/:id` — approve, enable, set default (auto-unsets previous default for capability), update display name
+  - `DELETE /api/admin/models/registry/:id` — remove from registry
+  - `POST /api/admin/models/registry/:id/verify` — verify a single model
+  - `POST /api/admin/models/sync/:providerId` — sync from provider's live API
+  - `GET /api/models` — user-facing: ONLY approved + enabled models (no API keys, no internal IDs, no disabled/unapproved models)
+- **Verified with real data**:
+  - Synced OpenRouter: 340 models fetched from live API in 894ms, 340 new models persisted.
+  - Registry shows 340 catalog models, 0 verified, 0 approved.
+  - Approved 1 model → `/api/models` returned 1 model (user visibility confirmed).
+  - Unapproved → `/api/models` returned 0 (visibility correctly restricted).
+  - Sync with invalid/expired key: Z.ai returned "token expired or incorrect" (proper error handling, no fake success).
+  - ESLint clean, no runtime errors.
+
+Stage Summary:
+- Phase 2.8 AI Gateway is live with real provider synchronization (340 OpenRouter models synced from live API).
+- Three-layer model system: Catalog (340) → Verified (0, pending verification) → Approved (0, pending admin approval).
+- Only approved models are visible to users via /api/models.
+- Routing engine only selects approved + verified + healthy models.
+- Sync reports are accurate (catalog/new/updated/unavailable/duration).
+- All admin actions audit-logged.
+- Next: build the admin UI for the three-layer model management, wire routing into ai.ts, verify models in batch.

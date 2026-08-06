@@ -247,3 +247,52 @@ model AiUsageLog {
   @@index([model, createdAt])
   @@index([userId, createdAt])
 }
+
+/// The three-layer AI model registry.
+/// Layer 1: Provider Catalog — every model returned by the provider (verificationStatus = "unverified")
+/// Layer 2: Verified — credentials confirmed usable (verificationStatus = "verified")
+/// Layer 3: Approved — admin-approved for user visibility (approved = true)
+model AiModel {
+  id                 String   @id @default(cuid())
+  providerId         String   // provider id (zai, openrouter, openai, …)
+  modelId            String   // the model ID sent to the provider
+  displayName        String   // display name
+  providerName       String   // provider display name
+  owner              String?  // model owner (e.g. "openai", "anthropic", "meta")
+  category           String?  // chat, image, embedding, audio, etc.
+  contextWindow      Int?
+  maxOutputTokens    Int?
+  inputCostPerM      Float?   // $ per 1M input tokens
+  outputCostPerM     Float?   // $ per 1M output tokens
+  supportsStreaming  Boolean  @default(true)
+  supportsVision     Boolean  @default(false)
+  supportsFunctionCalling Boolean @default(false)
+  supportsJsonMode   Boolean  @default(false)
+  supportsEmbeddings Boolean  @default(false)
+  supportsAudio      Boolean  @default(false)
+  supportsImages     Boolean  @default(false)
+  supportsVideo      Boolean  @default(false)
+  supportsReasoning  Boolean  @default(false)
+  capabilityTags     String?  // JSON array of tags
+  // Three-layer state
+  verificationStatus String   @default("unverified") // unverified | verified | unavailable | deprecated | preview | private | disabled-by-provider
+  enabled            Boolean  @default(true)  // enabled for routing
+  approved           Boolean  @default(false) // approved for user visibility
+  isDefault          Boolean  @default(false) // default for a capability
+  defaultCapability  String?  // which capability this is the default for
+  // Health
+  healthStatus       String   @default("unknown") // unknown | healthy | slow | degraded | offline
+  avgLatencyMs       Int?
+  lastHealthCheck    DateTime?
+  // Sync metadata
+  lastSyncAt         DateTime?
+  lastVerifiedAt     DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([providerId, modelId])
+  @@index([providerId])
+  @@index([approved, enabled])
+  @@index([verificationStatus])
+  @@index([isDefault])
+}
