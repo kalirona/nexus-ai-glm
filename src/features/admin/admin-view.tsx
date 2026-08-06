@@ -71,6 +71,7 @@ interface PlatformSettings {
   baseUrl: string;
   enabledModels: string[];
   customModels: CustomModel[];
+  apiKeys: ApiKeyConfig[];
   rateLimitPerMin: number;
   rateLimitPerDay: number;
   ipAllowlist: string;
@@ -122,6 +123,18 @@ interface CustomModel {
   description?: string;
   context?: string;
   enabled: boolean;
+}
+
+interface ApiKeyConfig {
+  id: string;
+  label: string;
+  role: "chat" | "image" | "all";
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+  apiKeyMasked: string;
+  isDefault: boolean;
+  createdAt: string;
 }
 
 interface AdminStats {
@@ -695,6 +708,8 @@ function ModelsSection() {
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [editingCustom, setEditingCustom] = useState<CustomModel | null>(null);
   const [perModelTest, setPerModelTest] = useState<Record<string, TestResult>>({});
+  const [showKeyForm, setShowKeyForm] = useState(false);
+  const [editingKey, setEditingKey] = useState<ApiKeyConfig | null>(null);
 
   const { data: settings } = useQuery<PlatformSettings>({
     queryKey: ["admin-settings"],
@@ -826,8 +841,66 @@ function ModelsSection() {
     toast.success("Custom model deleted");
   };
 
+  // ---- API Keys CRUD ----
+  const saveApiKeys = useMutation({
+    mutationFn: (keys: ApiKeyConfig[]) =>
+      api("/api/admin/settings", { method: "PATCH", body: JSON.stringify({ apiKeys: keys }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-settings"] });
+    },
+  });
+
+  const deleteApiKey = (id: string) => {
+    const current = settings?.apiKeys ?? [];
+    saveApiKeys.mutate(current.filter((k) => k.id !== id));
+    toast.success("API key deleted");
+  };
+
+  const setDefaultKey = (id: string, role: string) => {
+    const current = settings?.apiKeys ?? [];
+    // Unset other defaults for the same role scope
+    const next = current.map((k) => {
+      if (k.id === id) return { ...k, isDefault: !k.isDefault };
+      // If turning on a default for this role, demote others with the same role or "all"
+      if (k.isDefault && (k.role === role || k.role === "all" || role === "all")) {
+        return { ...k, isDefault: false };
+      }
+      return k;
+    });
+    saveApiKeys.mutate(next);
+  };
+
   const builtinModels = (modelsData?.models ?? []).filter((m) => m.kind !== "custom");
   const customModels = (modelsData?.models ?? []).filter((m) => m.kind === "custom");
+
+  if (showKeyForm || editingKey) {
+    return (
+      <ApiKeyForm
+        existing={editingKey}
+        onClose={() => { setShowKeyForm(false); setEditingKey(null); }}
+        onSave={(keyConfig) => {
+          const current = settings?.apiKeys ?? [];
+          const idx = current.findIndex((k) => k.id === keyConfig.id);
+          // If setting as default, demote others with the same role
+          let next = current;
+          if (keyConfig.isDefault) {
+            next = next.map((k) => {
+              if (k.id === keyConfig.id) return keyConfig;
+              if (k.isDefault && (k.role === keyConfig.role || k.role === "all" || keyConfig.role === "all")) {
+                return { ...k, isDefault: false };
+              }
+              return k;
+            });
+          } else {
+            next = idx >= 0 ? next.map((k) => (k.id === keyConfig.id ? keyConfig : k)) : [...next, keyConfig];
+          }
+          saveApiKeys.mutate(next, { onSuccess: () => toast.success(editingKey ? "API key updated" : "API key added") });
+          setShowKeyForm(false);
+          setEditingKey(null);
+        }}
+      />
+    );
+  }
 
   if (showCustomForm || editingCustom) {
     return (
@@ -981,6 +1054,65 @@ function ModelsSection() {
         )}
       </Card>
 
+      {/* API Keys manager — assign keys to chat / image roles */}
+      <Card className="p-4 sm:p-5">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Key className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold sm:text-base">API Keys</h3>
+            <Badge variant="outline" className="text-[10px]">{settings?.apiKeys?.length ?? 0}</Badge>
+          </div>
+          <Button onClick={() => setShowKeyForm(true)} size="sm" className="gap-2">
+            <Plus className="h-4 w-4" /> Add key
+          </Button>
+        </div>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Manage API keys and assign them to roles. The default key for each role (chat or image) is used automatically. Use different keys for chat vs images to control costs and routing.
+        </p>
+
+        {(settings?.apiKeys?.length ?? 0) === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-xl bg-muted">
+              <Key className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground">No API keys yet. Add one and assign it to chat, image, or both.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {settings?.apiKeys?.map((k) => (
+              <div key={k.id} className={cn("flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center", k.isDefault ? "border-primary/40 bg-primary/5" : "bg-card")}>
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", k.role === "image" ? "bg-rose-500/10 text-rose-500" : k.role === "all" ? "bg-violet-500/10 text-violet-500" : "bg-emerald-500/10 text-emerald-500")}>
+                    <Key className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium">{k.label}</p>
+                      <Badge variant="outline" className="text-[10px] capitalize">{k.role}</Badge>
+                      <Badge variant="outline" className="text-[10px] capitalize">{k.provider}</Badge>
+                      {k.isDefault && <Badge className="text-[10px] gap-1"><Star className="h-2.5 w-2.5" /> Default</Badge>}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground font-mono">{k.baseUrl}</p>
+                    {k.apiKeyMasked && <p className="truncate text-[10px] text-muted-foreground/70">key: {k.apiKeyMasked}</p>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 sm:ml-auto">
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => setDefaultKey(k.id, k.role)} title="Toggle default for role">
+                    <Star className={cn("h-3 w-3", k.isDefault && "fill-primary text-primary")} />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => setEditingKey(k)} title="Edit key">
+                    <SettingsIcon className="h-3 w-3" />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-500/10 dark:text-rose-400" onClick={() => deleteApiKey(k.id)} title="Delete key">
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
       {/* Built-in model catalog */}
       <Card className="p-4 sm:p-5">
         <div className="mb-1 flex items-center gap-2">
@@ -1089,6 +1221,137 @@ function ModelsSection() {
         )}
       </Card>
     </div>
+  );
+}
+
+// ---- API key add/edit form ----
+function ApiKeyForm({
+  existing,
+  onClose,
+  onSave,
+}: {
+  existing: ApiKeyConfig | null;
+  onClose: () => void;
+  onSave: (key: ApiKeyConfig) => void;
+}) {
+  const [form, setForm] = useState({
+    id: existing?.id ?? "",
+    label: existing?.label ?? "",
+    role: existing?.role ?? "all",
+    provider: existing?.provider ?? "zai",
+    baseUrl: existing?.baseUrl ?? "https://api.z.ai/api/paas/v4",
+    apiKey: "",
+    isDefault: existing?.isDefault ?? false,
+  });
+  const [showKey, setShowKey] = useState(false);
+
+  const onProviderChange = (providerId: string) => {
+    const provider = AI_PROVIDERS.find((p) => p.id === providerId);
+    setForm((s) => ({
+      ...s,
+      provider: providerId,
+      baseUrl: provider?.baseUrl || s.baseUrl,
+    }));
+  };
+
+  const save = () => {
+    if (!form.label.trim()) {
+      toast.error("Label is required");
+      return;
+    }
+    onSave({
+      ...form,
+      id: form.id || `key-${Date.now()}`,
+      apiKey: form.apiKey, // empty = keep existing (backend preserves)
+      apiKeyMasked: form.apiKey ? form.apiKey.slice(0, 6) + "••••••••" + form.apiKey.slice(-4) : existing?.apiKeyMasked ?? "",
+      createdAt: existing?.createdAt || new Date().toISOString(),
+    });
+  };
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold sm:text-base">{existing ? "Edit API key" : "Add API key"}</h3>
+          <p className="text-xs text-muted-foreground">Assign a key to chat, image, or both roles.</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>Back</Button>
+      </div>
+
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Label *</Label>
+          <Input value={form.label} onChange={(e) => setForm((s) => ({ ...s, label: e.target.value }))} placeholder="e.g. Z.ai Chat Key, OpenAI Image Key" />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Role</Label>
+            <Select value={form.role} onValueChange={(v) => setForm((s) => ({ ...s, role: v as ApiKeyConfig["role"] }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All (chat + image)</SelectItem>
+                <SelectItem value="chat">Chat only</SelectItem>
+                <SelectItem value="image">Image only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Provider</Label>
+            <Select value={form.provider} onValueChange={onProviderChange}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {AI_PROVIDERS.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Base URL</Label>
+          <div className="relative">
+            <Link2 className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={form.baseUrl} onChange={(e) => setForm((s) => ({ ...s, baseUrl: e.target.value }))} placeholder="https://api.example.com/v1" className="pl-8 font-mono text-xs" />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">
+            API Key {existing?.apiKeyMasked && <span className="text-muted-foreground/60">(current: {existing.apiKeyMasked} — leave blank to keep)</span>}
+          </Label>
+          <div className="relative">
+            <Input
+              type={showKey ? "text" : "password"}
+              value={form.apiKey}
+              onChange={(e) => setForm((s) => ({ ...s, apiKey: e.target.value }))}
+              placeholder="Enter API key…"
+              className="pr-10"
+            />
+            <button onClick={() => setShowKey((s) => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label={showKey ? "Hide" : "Show"}>
+              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div>
+            <p className="text-sm font-medium">Set as default for this role</p>
+            <p className="text-xs text-muted-foreground">The default key is used automatically for all {form.role === "all" ? "chat and image" : form.role} requests</p>
+          </div>
+          <Switch checked={form.isDefault} onCheckedChange={(v) => setForm((s) => ({ ...s, isDefault: v }))} />
+        </div>
+      </div>
+
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={save} size="sm" className="gap-2">
+          <Check className="h-4 w-4" />
+          {existing ? "Save changes" : "Add key"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

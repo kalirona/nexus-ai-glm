@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, logAudit } from "@/lib/auth";
-import { getSetting, setSetting, DEFAULT_SETTINGS, type PlatformSettings, type CustomModel } from "@/lib/settings";
+import { getSetting, setSetting, DEFAULT_SETTINGS, type PlatformSettings, type CustomModel, type ApiKeyConfig } from "@/lib/settings";
 import { AI_PROVIDERS } from "@/lib/constants";
-import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function maskKey(key: string): string {
+  if (key.length <= 10) return "••••••••";
+  return key.slice(0, 6) + "••••••••" + key.slice(-4);
+}
 
 /** GET /api/admin/settings — full platform settings (admin only). */
 export async function GET() {
@@ -18,6 +22,13 @@ export async function GET() {
     apiKey: "", // never return raw keys
   }));
 
+  // Load API keys and mask them
+  const apiKeysRaw = await getSetting<ApiKeyConfig[]>("apiKeys", []);
+  const apiKeys = apiKeysRaw.map((k) => ({
+    ...k,
+    apiKey: "", // never return raw keys
+  }));
+
   const settings: PlatformSettings = {
     providerId: await getSetting("providerId", DEFAULT_SETTINGS.providerId),
     providerKey: "", // never return the raw key
@@ -25,6 +36,7 @@ export async function GET() {
     baseUrl: await getSetting("baseUrl", DEFAULT_SETTINGS.baseUrl),
     enabledModels: await getSetting("enabledModels", DEFAULT_SETTINGS.enabledModels),
     customModels,
+    apiKeys,
     rateLimitPerMin: await getSetting("rateLimitPerMin", DEFAULT_SETTINGS.rateLimitPerMin),
     rateLimitPerDay: await getSetting("rateLimitPerDay", DEFAULT_SETTINGS.rateLimitPerDay),
     ipAllowlist: await getSetting("ipAllowlist", DEFAULT_SETTINGS.ipAllowlist),
@@ -45,17 +57,13 @@ export async function GET() {
   return NextResponse.json(settings);
 }
 
-function maskKey(key: string): string {
-  if (key.length <= 10) return "••••••••";
-  return key.slice(0, 6) + "••••••••" + key.slice(-4);
-}
-
 /** PATCH /api/admin/settings — update platform settings (admin only). */
 export async function PATCH(req: Request) {
   const admin = await requireAdmin();
   const body = (await req.json().catch(() => ({}))) as Partial<PlatformSettings> & {
     providerKey?: string; // raw key for the selected provider
     customModels?: CustomModel[]; // full custom models array (with raw keys for new/edited)
+    apiKeys?: ApiKeyConfig[]; // full API keys array (with raw keys for new/edited)
   };
 
   const changed: string[] = [];
@@ -109,6 +117,45 @@ export async function PATCH(req: Request) {
     });
     await setSetting("customModels", sanitized);
     changed.push("customModels");
+  }
+
+  // API keys — full replace. Preserve existing raw keys when incoming is empty.
+  if (Array.isArray(body.apiKeys)) {
+    const existing = await getSetting<ApiKeyConfig[]>("apiKeys", []);
+    const existingMap = new Map(existing.map((k) => [k.id, k]));
+
+    // Ensure only one default per role
+    let defaultsByRole: Record<string, string | null> = {};
+    const sanitized: ApiKeyConfig[] = body.apiKeys.map((k) => {
+      const prev = existingMap.get(k.id);
+      let rawKey = k.apiKey;
+      if (!rawKey && prev?.apiKey) rawKey = prev.apiKey;
+
+      // Track defaults to enforce uniqueness
+      const roleKey = k.role;
+      if (k.isDefault) {
+        if (defaultsByRole[roleKey] !== undefined) {
+          // Already have a default for this role — demote this one
+          k.isDefault = false;
+        } else {
+          defaultsByRole[roleKey] = k.id;
+        }
+      }
+
+      return {
+        id: k.id,
+        label: k.label,
+        role: k.role,
+        provider: k.provider,
+        baseUrl: k.baseUrl,
+        apiKey: rawKey,
+        apiKeyMasked: rawKey ? maskKey(rawKey) : prev?.apiKeyMasked ?? "",
+        isDefault: k.isDefault,
+        createdAt: k.createdAt || prev?.createdAt || new Date().toISOString(),
+      };
+    });
+    await setSetting("apiKeys", sanitized);
+    changed.push("apiKeys");
   }
 
   if (Array.isArray(body.enabledModels)) {
@@ -177,6 +224,5 @@ export async function PATCH(req: Request) {
   }
 
   await logAudit(admin.id, "admin.settings.update", "platform", undefined, { changed: changed.join(", ") });
-  void db; // keep import for future audit queries
   return NextResponse.json({ ok: true, changed });
 }

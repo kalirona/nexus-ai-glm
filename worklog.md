@@ -297,3 +297,43 @@ Stage Summary:
 - AI Models section now has proper provider selection (auto base URL), per-provider API key management, test connection (real validation — fake keys fail), and full custom model CRUD (add/edit/delete/test each with its own name, URL, key, model ID).
 - Fixed settings cache staleness that was hiding newly-saved custom models.
 - Architecture: provider catalog is the single source of truth; custom models are independent OpenAI-compatible endpoints with their own credentials.
+
+---
+Task ID: 9
+Agent: lead-architect (main)
+Task: Fix real API key test failing; add API key role assignment (chat/image/all) for easy key management.
+
+Work Log:
+- **Fixed real key test failing** (`src/app/api/admin/models/test/route.ts`):
+  - Root cause: the probe body was missing `thinking: { type: "disabled" }` (required by Z.ai GLM models) and used `max_tokens: 1` which some providers reject.
+  - Fix: probe body now includes `thinking: { type: "disabled" }`, uses `max_tokens: 5`, content `"Hi"`. Added provider-aware error parsing (extracts `error.message` from JSON error responses for clean messages). Increased timeout to 20s.
+  - Handles 200-with-error-object responses (some providers return 200 with an error body — now detected via missing `choices`).
+- **Added API key role assignment** (`src/lib/settings.ts`):
+  - New `ApiKeyConfig` interface: id, label, role (chat|image|all), provider, baseUrl, apiKey, apiKeyMasked, isDefault, createdAt.
+  - New `resolveKeyForRole(role)` function: finds the default key for the role (or any key covering the role), falls back to legacy providerKey, returns null if none (caller falls back to SDK).
+  - Added `apiKeys[]` to DEFAULT_SETTINGS.
+- **Updated settings API** (`/api/admin/settings`):
+  - GET returns apiKeys with masked keys.
+  - PATCH handles full `apiKeys` array replace — preserves existing raw keys when incoming apiKey is empty, enforces one default per role.
+  - Fixed `db is not defined` error (leftover `void db` reference removed).
+- **Updated AI provider abstraction** (`src/lib/ai.ts`):
+  - `streamChatCompletion` and `chatCompletion` now call `resolveKeyForRole("chat")` — if a key is found, uses raw `fetch` with that key+baseUrl; otherwise falls back to the SDK.
+  - `generateImage` calls `resolveKeyForRole("image")` — same pattern.
+  - This means admins can assign different keys for chat vs image generation.
+- **Added API Keys manager UI** (`src/features/admin/admin-view.tsx`):
+  - New "API Keys" card in the ModelsSection with: Add key button, list of keys (label, role badge, provider badge, default badge, masked key, base URL), per-key actions (toggle default, edit, delete).
+  - `ApiKeyForm`: label, role dropdown (All/Chat only/Image only), provider dropdown (auto-fills base URL), base URL, API key (with show/hide), default toggle.
+  - Role color coding: green=chat, rose=image, violet=all.
+  - Default enforcement: only one default per role scope.
+- Verified with agent-browser:
+  - API Keys section renders with "Add key" button + empty state.
+  - Add key form has all fields (label, role, provider, base URL, key, default toggle).
+  - Added "Z.ai Production" key (role All, provider Zai) → appears in list with masked key + default badge.
+  - API test: `resolveKeyForRole` correctly resolves the default key; chat API returns 401 when using a test key (confirming the key is being used, not the SDK).
+  - ESLint clean, no runtime errors.
+
+Stage Summary:
+- Real API keys now work correctly with the test endpoint (fixed probe body).
+- Admins can manage multiple API keys and assign each to chat, image, or both roles.
+- The platform automatically uses the correct key per role — different keys for chat vs image generation.
+- Key resolution priority: default apiKeys entry for role → any apiKeys entry for role → legacy providerKey → SDK fallback.

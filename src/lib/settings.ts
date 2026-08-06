@@ -39,15 +39,32 @@ export interface CustomModel {
   enabled: boolean;
 }
 
+/** Role an API key is assigned to. */
+export type KeyRole = "chat" | "image" | "all";
+
+/** A managed API key with a role, provider and base URL. */
+export interface ApiKeyConfig {
+  id: string;
+  label: string; // friendly name, e.g. "Z.ai Chat Key"
+  role: KeyRole; // chat | image | all
+  provider: string; // provider id (zai, openrouter, openai, …)
+  baseUrl: string; // provider base URL
+  apiKey: string; // raw key (masked when returned)
+  apiKeyMasked: string;
+  isDefault: boolean; // default key for the role
+  createdAt: string;
+}
+
 /** Default platform settings. */
 export const DEFAULT_SETTINGS = {
   // AI provider
   providerId: "zai", // selected provider (zai | openrouter | openai | deepseek | groq | custom)
-  providerKey: "", // saved API key for the selected provider (masked in UI)
+  providerKey: "", // saved API key for the selected provider (masked in UI) — legacy
   providerKeyMasked: "",
   baseUrl: "https://api.z.ai/api/paas/v4", // AI provider base URL
   enabledModels: ["auto", "glm-4.6", "glm-4.5", "glm-4.5v", "deepseek-v3"],
   customModels: [] as CustomModel[], // admin-defined models with their own key/url
+  apiKeys: [] as ApiKeyConfig[], // managed API keys with role assignment
   // Security
   rateLimitPerMin: 60,
   rateLimitPerDay: 5000,
@@ -69,3 +86,26 @@ export const DEFAULT_SETTINGS = {
 } as const;
 
 export type PlatformSettings = typeof DEFAULT_SETTINGS;
+
+/**
+ * Resolves the API key + base URL for a given role (chat or image).
+ * Priority: default apiKeys entry for the role → legacy providerKey → null.
+ * Returns null if no key is configured (caller falls back to SDK).
+ */
+export async function resolveKeyForRole(
+  role: "chat" | "image"
+): Promise<{ apiKey: string; baseUrl: string } | null> {
+  const apiKeys = await getSetting<ApiKeyConfig[]>("apiKeys", []);
+  // Find a default key that covers this role
+  const match =
+    apiKeys.find((k) => k.isDefault && (k.role === "all" || k.role === role) && k.apiKey) ||
+    apiKeys.find((k) => (k.role === "all" || k.role === role) && k.apiKey);
+  if (match) {
+    return { apiKey: match.apiKey, baseUrl: match.baseUrl };
+  }
+  // Fall back to legacy providerKey
+  const legacyKey = await getSetting<string>("providerKey", "");
+  const legacyBaseUrl = await getSetting<string>("baseUrl", DEFAULT_SETTINGS.baseUrl);
+  if (legacyKey) return { apiKey: legacyKey, baseUrl: legacyBaseUrl };
+  return null;
+}
