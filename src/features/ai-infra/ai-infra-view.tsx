@@ -1582,6 +1582,14 @@ function DefaultsSection() {
     queryFn: () => api<PlatformSettings>("/api/admin/settings"),
   });
 
+  // Fetch approved models from the three-layer registry — these are the models
+  // admins have approved for user visibility. This replaces the old
+  // buildModelOptions() which only looked at enabledModels/customModels.
+  const { data: registryData } = useQuery<{ models: AiModel[] }>({
+    queryKey: ["ai-models-approved"],
+    queryFn: () => api("/api/admin/models/registry?layer=approved"),
+  });
+
   // Local "edits" overlay on top of the persisted defaultModels.
   // Avoids syncing effects — the effective value reads from settings, then edits.
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -1602,7 +1610,31 @@ function DefaultsSection() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const modelOptions = buildModelOptions(settings);
+  // Build options from approved registry models + fallback to old enabled models
+  const modelOptions: { id: string; label: string }[] = useMemo(() => {
+    const opts: { id: string; label: string }[] = [];
+    // Priority: approved models from the registry
+    for (const m of registryData?.models ?? []) {
+      opts.push({ id: m.modelId, label: m.displayName });
+    }
+    // Also include old enabled built-in models (backward compat)
+    for (const m of AI_MODELS) {
+      if (settings?.enabledModels?.includes(m.id) && !opts.find((o) => o.id === m.id)) {
+        opts.push({ id: m.id, label: m.name });
+      }
+    }
+    // Also include old custom models
+    for (const m of settings?.customModels ?? []) {
+      if (m.enabled && !opts.find((o) => o.id === m.modelId)) {
+        opts.push({ id: m.modelId, label: m.name });
+      }
+    }
+    // If nothing available, fall back to all built-ins so the dropdown isn't empty
+    if (opts.length === 0) {
+      for (const m of AI_MODELS) opts.push({ id: m.id, label: m.name });
+    }
+    return opts;
+  }, [registryData, settings]);
 
   if (isLoading) {
     return (
@@ -1617,8 +1649,18 @@ function DefaultsSection() {
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Pick the default model for each use case. Only enabled models appear in the dropdowns.
+        Pick the default model for each use case. Approved models from the registry appear in the dropdowns.
       </p>
+
+      {modelOptions.length === 0 && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div>
+            <p className="font-medium">No approved models yet</p>
+            <p className="mt-0.5">Go to the Models tab, sync a provider, and approve models to populate these dropdowns.</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {USE_CASES.map((uc) => {

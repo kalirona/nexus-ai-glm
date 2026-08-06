@@ -1,5 +1,5 @@
 import ZAI from "z-ai-web-dev-sdk";
-import { resolveKeyForRole } from "@/lib/settings";
+import { resolveKeyForRole, getSetting } from "@/lib/settings";
 import { logAiUsage } from "@/lib/provider-service";
 
 /**
@@ -30,11 +30,50 @@ export interface ChatMsg {
 }
 
 /**
+ * Resolves the model to use when "auto" is specified.
+ * Checks the admin-configured defaultModels.chat, then falls back to null
+ * (which means don't send a model field — let the SDK/provider pick).
+ */
+async function resolveAutoModel(keyConfig: { baseUrl: string } | null): Promise<string | null> {
+  // If using the SDK (no keyConfig), "auto" is fine — the SDK handles it
+  if (!keyConfig) return null;
+
+  // Check admin-configured default model for chat
+  const defaultModels = await getSetting<Record<string, string>>("defaultModels", {});
+  if (defaultModels.chat) return defaultModels.chat;
+
+  // No default configured — the provider will need a model.
+  // Return null to signal "use SDK instead" for "auto" routing.
+  return null;
+}
+
+/**
  * Run a chat completion that streams server-sent events.
  * Uses the admin-configured chat key if available, otherwise the SDK.
+ * When model is "auto" and a configured key is used, resolves to the
+ * admin-configured default chat model. If no default is set, falls back
+ * to the SDK which handles "auto" natively.
  */
 export async function streamChatCompletion(messages: ChatMsg[], model?: string) {
   const keyConfig = await resolveKeyForRole("chat");
+  const isAuto = !model || model === "auto";
+
+  // When using "auto" with a configured key, resolve to a real model.
+  // If no default is configured, fall back to the SDK (which handles "auto").
+  if (keyConfig && isAuto) {
+    const resolvedModel = await resolveAutoModel(keyConfig);
+    if (!resolvedModel) {
+      // No default model configured — use SDK for "auto" routing
+      const zai = await getSDK();
+      const result = await zai.chat.completions.create({
+        messages,
+        stream: true,
+        thinking: { type: "disabled" },
+      } as never);
+      return result as ReadableStream<Uint8Array>;
+    }
+    model = resolvedModel;
+  }
 
   if (keyConfig) {
     // Use raw fetch with the admin-configured key + base URL
