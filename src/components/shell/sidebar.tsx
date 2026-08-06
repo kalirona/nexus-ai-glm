@@ -151,7 +151,12 @@ function SidebarContent({
   return (
     <>
       {/* Brand row */}
-      <div className="flex h-16 items-center gap-2.5 border-b px-4">
+      <div
+        className={cn(
+          "flex h-16 items-center gap-2.5 border-b",
+          collapsed ? "flex-col justify-center gap-2 px-2" : "px-4"
+        )}
+      >
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-teal-500 text-primary-foreground shadow-glow">
           <Sparkles className="h-5 w-5" />
         </div>
@@ -161,7 +166,7 @@ function SidebarContent({
             <p className="truncate text-[11px] text-muted-foreground">Business OS</p>
           </div>
         )}
-        {/* Collapse toggle — desktop only */}
+        {/* Collapse toggle — desktop only. When collapsed it sits below the logo, centered. */}
         {onToggleCollapse && (
           <TooltipProvider delayDuration={200}>
             <Tooltip>
@@ -169,14 +174,17 @@ function SidebarContent({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  className={cn(
+                    "h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
+                    collapsed && "border border-border/60"
+                  )}
                   onClick={onToggleCollapse}
                   aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >
                   {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right">{collapsed ? "Expand" : "Collapse"}</TooltipContent>
+              <TooltipContent side="right">{collapsed ? "Expand sidebar" : "Collapse"}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}

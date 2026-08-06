@@ -17,5 +17,6 @@ export async function GET() {
     credits: user.credits,
     creditsResetAt: user.creditsResetAt,
     avatarUrl: user.avatarUrl,
+    isAdmin: user.isAdmin,
   });
 }

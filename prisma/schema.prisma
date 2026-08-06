@@ -21,6 +21,8 @@ model User {
   credits         Int      @default(200)
   creditsResetAt  DateTime?
   role            String   @default("owner") // owner | admin | member
+  isAdmin         Boolean  @default(false) // platform super admin
+  status          String   @default("active") // active | suspended | banned
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

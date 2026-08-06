@@ -112,3 +112,38 @@ Work Log:
 
 Stage Summary:
 - Sidebar no longer auto-collapses. Default open, explicit collapse only, resets on reload.
+
+---
+Task ID: 4
+Agent: lead-architect (main)
+Task: Fix collapsed sidebar missing expand icon, optimize settings layout, add super admin settings.
+
+Work Log:
+- Sidebar collapse fix (`src/components/shell/sidebar.tsx`):
+  - Root cause: when collapsed (68px wide), the brand row had logo(36) + gap + toggle(32) = 78px which overflowed the 68px sidebar, pushing the expand button out of view.
+  - Fix: brand row now uses `flex-col` when collapsed — logo on top, expand button below it, both centered. Added a subtle border to the expand button so it's clearly visible.
+  - Verified: collapse → "Expand sidebar" button visible & clickable; expand → back to full sidebar.
+- Added `isAdmin` + `status` fields to User model (`prisma/schema.prisma`); pushed schema + regenerated Prisma client.
+- Updated `src/lib/auth.ts`: demo user is now super admin; added `requireAdmin()` guard that throws 403 for non-admins. Backfills `isAdmin` for existing demo user.
+- Created admin API routes:
+  - `GET /api/admin/stats` — platform metrics (total/active/suspended users, plan breakdown, MRR estimate, 7-day credit series).
+  - `GET /api/admin/users?q=&status=` — searchable, filterable user list.
+  - `PATCH /api/admin/users/:id` — update plan, status (active/suspended/banned), grant credits, toggle admin. Logs audit + creates credit transaction on grant.
+- Seeded 8 demo users (`src/lib/seed.ts`) across plans/statuses so the admin panel has data.
+- Rebuilt `src/features/settings/settings-view.tsx`:
+  - Optimized layout: 220px sidebar nav + content area, animated tab transitions (AnimatePresence), per-tab heading with icon + description.
+  - Added "Super Admin" tab (only visible when `user.isAdmin`), with a Crown badge in the header.
+  - Admin tab has 3 sub-sections with their own animated transitions:
+    - **Overview**: 8 platform stat cards (users, MRR, active, suspended, pro, agency, credits, chats) + 7-day credit usage bar chart.
+    - **Users**: searchable/filterable user table with avatar, name/email, plan badge, status badge, credits. Per-user actions: plan selector dropdown, +1k credits grant, suspend/activate toggle.
+    - **System**: platform settings (signups, maintenance mode, email verification, auto-suspend), credit economy config (costs per chat/image/document), audit log feed.
+  - All cards/buttons have responsive mobile sizing.
+- Updated `src/app/api/user/route.ts` + `src/lib/api-client.ts` to expose `isAdmin`.
+- Restarted dev server to pick up regenerated Prisma client (new `isAdmin`/`status` fields).
+- Verified with agent-browser: collapsed sidebar expand button visible; settings tabs all render; Super Admin tab shows overview stats (9 users, $551 MRR), user management table with 8 demo users + action buttons, system settings. Tab transitions animate. ESLint clean, no runtime errors.
+
+Stage Summary:
+- Collapsed sidebar now has a visible, centered expand button.
+- Settings page optimized: animated tab transitions, per-tab headings, responsive layout.
+- Super Admin settings live: platform overview with MRR/user metrics, user management (plan/status/credits/admin controls), system settings (signups, maintenance, credit costs, audit log). Admin-only — hidden from non-admin users.
+- Next: Phase 2 real auth/payments (ROADMAP.md), Phase 3 SEO/Marketing/YouTube workspaces.

@@ -23,6 +23,7 @@ export async function getCurrentUser() {
           plan: "pro",
           credits: 18500,
           avatarUrl: null,
+          isAdmin: true, // demo user is the platform super admin
           creditsResetAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 12),
         },
       });
@@ -35,7 +36,26 @@ export async function getCurrentUser() {
       if (!user) throw err;
     }
   }
+  // Backfill isAdmin for users created before the field existed
+  if (user && !user.isAdmin && user.email === DEMO_EMAIL) {
+    user = await db.user.update({
+      where: { id: user.id },
+      data: { isAdmin: true },
+    });
+  }
   return user!;
+}
+
+/** Returns true if the current user is a platform super admin. */
+export async function requireAdmin() {
+  const user = await getCurrentUser();
+  if (!user.isAdmin) {
+    throw new Response(JSON.stringify({ error: "Admin access required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return user;
 }
 
 export async function spendCredits(userId: string, amount: number, reason: string, refId?: string) {

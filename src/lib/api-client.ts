@@ -33,6 +33,7 @@ export interface UserDto {
   credits: number;
   creditsResetAt: string | null;
   avatarUrl: string | null;
+  isAdmin: boolean;
 }
 
 export interface ChatDto {
