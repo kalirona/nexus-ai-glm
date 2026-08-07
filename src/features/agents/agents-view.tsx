@@ -63,7 +63,9 @@ export function AgentsView() {
       systemPrompt: agent.systemPrompt,
       greeting: `${agent.description} Ask me anything to get started.`,
     });
+    // Clear any active chat so the empty state shows with the agent banner
     setActiveChat(null);
+    // Navigate to chat — the empty state will show "Talking to [agent name]"
     setActiveModule("chat");
   };
 

@@ -248,7 +248,23 @@ model AiUsageLog {
   @@index([userId, createdAt])
 }
 
-/// The three-layer AI model registry.
+/// Centralized prompt management for each AI type.
+/// Stores versioned system prompts with enable/disable and audit trail.
+model PromptConfig {
+  id          String   @id @default(cuid())
+  aiType      String   // chat | image | document | ocr | speech-to-text | text-to-speech | code | translation | summarization | custom
+  name        String   // display name
+  content     String   // the system prompt text
+  version     Int      @default(1)
+  isActive    Boolean  @default(true) // only one active per aiType
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([aiType, isActive])
+  @@index([aiType, version])
+}
 /// Layer 1: Provider Catalog — every model returned by the provider (verificationStatus = "unverified")
 /// Layer 2: Verified — credentials confirmed usable (verificationStatus = "verified")
 /// Layer 3: Approved — admin-approved for user visibility (approved = true)

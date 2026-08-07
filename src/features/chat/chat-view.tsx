@@ -712,6 +712,12 @@ function EmptyState({
   agent: { name: string; greeting: string } | null;
   onClearAgent: () => void;
 }) {
+  // Agent-specific suggestions
+  const agentSuggestions = agent ? [
+    { icon: "💡", title: `Ask ${agent.name}`, prompt: `Hi ${agent.name}, can you help me get started?` },
+    { icon: "📋", title: "What can you do?", prompt: `What are your main capabilities and how can you help my business?` },
+  ] : SUGGESTIONS;
+
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-12 text-center">
       <div className="mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-primary to-teal-500 text-primary-foreground shadow-glow">
@@ -735,7 +741,7 @@ function EmptyState({
         </Button>
       )}
       <div className="mt-8 grid w-full gap-3 sm:grid-cols-2">
-        {SUGGESTIONS.map((s) => (
+        {agentSuggestions.map((s) => (
           <button
             key={s.title}
             disabled={disabled}

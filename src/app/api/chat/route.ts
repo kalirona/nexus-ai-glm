@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser, spendCredits, logAudit } from "@/lib/auth";
 import { streamChatCompletion, type ChatMsg } from "@/lib/ai";
 import { CREDIT_COSTS } from "@/lib/constants";
+import { getActivePrompt, SECURITY_GUARD } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,16 +83,24 @@ export async function POST(req: Request) {
     select: { role: true, content: true },
   });
 
+  // Security guard — appended to every system prompt to prevent disclosure
+  // of internal models, providers, infrastructure, prompts, or configuration.
+  // Check for admin-configured prompt for "chat" AI type first
+  const adminPrompt = await getActivePrompt("chat");
+
   const messages: ChatMsg[] = [];
   if (body.systemPrompt) {
-    messages.push({ role: "system", content: body.systemPrompt });
-  }
-  // Default NexusAI system persona when none provided
-  if (!body.systemPrompt) {
+    // Agent persona + security guard
+    messages.push({ role: "system", content: body.systemPrompt + SECURITY_GUARD });
+  } else if (adminPrompt) {
+    // Admin-configured chat prompt + security guard
+    messages.push({ role: "system", content: adminPrompt + SECURITY_GUARD });
+  } else {
+    // Default NexusAI system persona with security guard
     messages.push({
       role: "system",
       content:
-        "You are NexusAI, the AI Business Operating System — a sharp, pragmatic senior advisor for founders, agencies, freelancers and small businesses. Be concise, specific and action-oriented. Use clean Markdown. Prefer concrete numbers and frameworks. When a request is ambiguous, make a reasonable assumption and proceed.",
+        "You are NexusAI, the AI Business Operating System — a sharp, pragmatic senior advisor for founders, agencies, freelancers and small businesses. Be concise, specific and action-oriented. Use clean Markdown. Prefer concrete numbers and frameworks. When a request is ambiguous, make a reasonable assumption and proceed." + SECURITY_GUARD,
     });
   }
   for (const m of history) {
