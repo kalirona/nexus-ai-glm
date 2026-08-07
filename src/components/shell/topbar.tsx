@@ -17,7 +17,7 @@ import { Sparkles, Zap, TrendingUp } from "lucide-react";
 
 const TITLES: Record<ModuleKey, { title: string; sub: string }> = {
   dashboard: { title: "Dashboard", sub: "Your business at a glance" },
-  chat: { title: "AI Chat", sub: "Multi-model workspace with memory" },
+  chat: { title: "AI Chat", sub: "Your AI workspace with memory" },
   documents: { title: "AI Documents", sub: "Generate business-ready content" },
   images: { title: "AI Images", sub: "Create, edit and ship visuals" },
   agents: { title: "AI Agents", sub: "Specialised assistants for every job" },

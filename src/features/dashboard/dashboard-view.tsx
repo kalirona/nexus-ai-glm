@@ -252,7 +252,7 @@ export function DashboardView() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{c.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{c.model}</p>
+                    <p className="truncate text-xs text-muted-foreground">{timeAgo(c.updatedAt)}</p>
                   </div>
                   <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" /> <span className="hidden sm:inline">{timeAgo(c.updatedAt)}</span>

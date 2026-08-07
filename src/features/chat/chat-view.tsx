@@ -419,34 +419,36 @@ export function ChatView() {
             </p>
           </div>
 
-          {/* Model selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                {AI_MODELS.find((m) => m.id === model)?.name ?? "Auto"}
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">Choose a model</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {AI_MODELS.map((m) => (
-                <DropdownMenuItem
-                  key={m.id}
-                  onClick={() => setModel(m.id)}
-                  className="flex flex-col items-start gap-0.5 py-2"
-                >
-                  <div className="flex w-full items-center gap-2">
-                    <span className="text-sm font-medium">{m.name}</span>
-                    <Badge variant="secondary" className="ml-auto text-[10px]">{m.badge}</Badge>
-                    {model === m.id && <Check className="h-3.5 w-3.5 text-primary" />}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{m.description}</p>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Model selector — only visible to super admins */}
+          {user?.isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  {AI_MODELS.find((m) => m.id === model)?.name ?? "Auto"}
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Choose a model</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {AI_MODELS.map((m) => (
+                  <DropdownMenuItem
+                    key={m.id}
+                    onClick={() => setModel(m.id)}
+                    className="flex flex-col items-start gap-0.5 py-2"
+                  >
+                    <div className="flex w-full items-center gap-2">
+                      <span className="text-sm font-medium">{m.name}</span>
+                      <Badge variant="secondary" className="ml-auto text-[10px]">{m.badge}</Badge>
+                      {model === m.id && <Check className="h-3.5 w-3.5 text-primary" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{m.description}</p>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {activeChat && (
             <>
@@ -543,7 +545,7 @@ export function ChatView() {
               <span className="inline-flex items-center gap-1">
                 <Zap className="h-3 w-3" /> 1 credit / message
               </span>
-              <span>{model === "auto" ? "Nexus Auto routing" : AI_MODELS.find((m) => m.id === model)?.name}</span>
+              <span>{user?.isAdmin ? (model === "auto" ? "Nexus Auto routing" : AI_MODELS.find((m) => m.id === model)?.name) : "Powered by NexusAI"}</span>
             </div>
           </div>
         </div>
@@ -725,7 +727,7 @@ function EmptyState({
         )}
       </h2>
       <p className="mt-2 max-w-md text-muted-foreground">
-        {agent ? agent.greeting : "Ask anything — strategy, copy, code, analysis. NexusAI remembers context and ships across models."}
+        {agent ? agent.greeting : "Ask anything — strategy, copy, code, analysis. NexusAI remembers context and helps you ship faster."}
       </p>
       {agent && (
         <Button variant="ghost" size="sm" onClick={onClearAgent} className="mt-3 text-xs text-muted-foreground">
