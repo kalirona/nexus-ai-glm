@@ -119,10 +119,35 @@ export async function streamChatCompletion(messages: ChatMsg[], model?: string) 
 export async function chatCompletion(messages: ChatMsg[], model?: string): Promise<string> {
   const keyConfig = await resolveKeyForRole("chat");
   const start = Date.now();
-  const usedModel = model || "auto";
+  const isAuto = !model || model === "auto";
   const provider = keyConfig ? "configured" : "zai-sdk";
 
   try {
+    // When using "auto" with a configured key, resolve to a real model.
+    // If no default is configured, fall back to the SDK.
+    if (keyConfig && isAuto) {
+      const defaultModels = await getSetting<Record<string, string>>("defaultModels", {});
+      if (defaultModels.chat) {
+        model = defaultModels.chat;
+      } else {
+        // No default — use SDK for "auto" routing
+        const zai = await getSDK();
+        const completion = await zai.chat.completions.create({
+          messages,
+          thinking: { type: "disabled" },
+        } as never);
+        const data = completion as { choices?: { message?: { content?: string } }[] };
+        await logAiUsage({
+          provider: "zai-sdk",
+          model: "auto",
+          requestType: "document",
+          durationMs: Date.now() - start,
+          success: true,
+        });
+        return data.choices?.[0]?.message?.content ?? "";
+      }
+    }
+
     if (keyConfig) {
       const body: Record<string, unknown> = {
         messages,
@@ -145,10 +170,9 @@ export async function chatCompletion(messages: ChatMsg[], model?: string): Promi
         throw new Error(`Chat API failed (${res.status}): ${errText.slice(0, 200)}`);
       }
       const data = await res.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
-      // Log usage
       await logAiUsage({
         provider,
-        model: usedModel,
+        model: model || "auto",
         requestType: "document",
         promptTokens: data.usage?.prompt_tokens,
         completionTokens: data.usage?.completion_tokens,
@@ -171,7 +195,7 @@ export async function chatCompletion(messages: ChatMsg[], model?: string): Promi
     const data = completion as { choices?: { message?: { content?: string } }[] };
     await logAiUsage({
       provider: "zai-sdk",
-      model: usedModel,
+      model: model || "auto",
       requestType: "document",
       durationMs: Date.now() - start,
       success: true,
@@ -180,7 +204,7 @@ export async function chatCompletion(messages: ChatMsg[], model?: string): Promi
   } catch (err) {
     await logAiUsage({
       provider,
-      model: usedModel,
+      model: model || "auto",
       requestType: "document",
       durationMs: Date.now() - start,
       success: false,
@@ -196,7 +220,13 @@ export async function generateImage(prompt: string, size: string): Promise<strin
   const start = Date.now();
 
   try {
-    if (keyConfig) {
+    // Only use the configured key if the provider supports image generation.
+    // OpenRouter and most non-Z.ai providers don't support /images/generations.
+    // Check if the configured baseUrl is a Z.ai endpoint (which supports images).
+    const isZaiEndpoint = keyConfig?.baseUrl?.includes("api.z.ai") || keyConfig?.baseUrl?.includes("z.ai");
+
+    if (keyConfig && isZaiEndpoint) {
+      // Z.ai supports image generation — use the configured key
       const res = await fetch(`${keyConfig.baseUrl}/images/generations`, {
         method: "POST",
         headers: {
@@ -223,7 +253,8 @@ export async function generateImage(prompt: string, size: string): Promise<strin
       return base64?.b64_json || base64?.base64 || "";
     }
 
-    // Fallback to SDK
+    // For non-Z.ai providers (OpenRouter, OpenAI, etc.) or when no key is configured,
+    // fall back to the SDK which uses Z.ai's built-in image generation.
     const zai = await getSDK();
     const res = await zai.images.generations.create({ prompt, size: size as never });
     await logAiUsage({

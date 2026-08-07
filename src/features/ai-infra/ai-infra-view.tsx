@@ -1933,6 +1933,12 @@ function RoutingSection() {
     queryFn: () => api<PlatformSettings>("/api/admin/settings"),
   });
 
+  // Fetch approved models from the three-layer registry
+  const { data: registryData } = useQuery<{ models: AiModel[] }>({
+    queryKey: ["ai-models-approved"],
+    queryFn: () => api("/api/admin/models/registry?layer=approved"),
+  });
+
   // Local "edits" overlay on top of the persisted routingRules.
   type RouteRule = { primary: string; fallback: string };
   const [edits, setEdits] = useState<Record<string, RouteRule>>({});
@@ -1960,7 +1966,22 @@ function RoutingSection() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const modelOptions = buildModelOptions(settings);
+  // Build options from approved registry models + fallback to old enabled models
+  const modelOptions: { id: string; label: string }[] = useMemo(() => {
+    const opts: { id: string; label: string }[] = [];
+    for (const m of registryData?.models ?? []) {
+      opts.push({ id: m.modelId, label: m.displayName });
+    }
+    for (const m of AI_MODELS) {
+      if (settings?.enabledModels?.includes(m.id) && !opts.find((o) => o.id === m.id)) {
+        opts.push({ id: m.id, label: m.name });
+      }
+    }
+    if (opts.length === 0) {
+      for (const m of AI_MODELS) opts.push({ id: m.id, label: m.name });
+    }
+    return opts;
+  }, [registryData, settings]);
 
   if (isLoading) {
     return (

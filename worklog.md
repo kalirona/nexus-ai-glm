@@ -592,3 +592,39 @@ Stage Summary:
 - Defaults tab now shows approved models from the three-layer registry in all 13 use-case dropdowns.
 - AI chat works in all scenarios: "auto" with no default (SDK fallback), "auto" with default (resolves to configured model), specific model (sends directly to provider).
 - Key resolution, encryption/decryption, and model routing all work end-to-end.
+
+---
+Task ID: 15
+Agent: lead-architect (main)
+Task: Fix image generator error, document generator error, and wire approved models into Defaults + Routing tabs.
+
+Work Log:
+- **Fixed image generation error** (`src/lib/ai.ts` — `generateImage`):
+  - Root cause: when an OpenRouter key was configured (role "all"), image generation tried to send to OpenRouter's `/images/generations` endpoint — but OpenRouter doesn't support image generation, returning a 400 ZodError.
+  - Fix: `generateImage` now checks if the configured baseUrl is a Z.ai endpoint (`includes("api.z.ai")`). Only Z.ai endpoints support image generation. For all other providers (OpenRouter, OpenAI, etc.), falls back to the SDK which uses Z.ai's built-in image generation.
+  - Verified: image generation works via the SDK fallback → image appears in gallery.
+- **Fixed document generation error** (`src/lib/ai.ts` — `chatCompletion`):
+  - Root cause: same as chat — when model="auto" and an OpenRouter key was configured, the request was sent to OpenRouter without a model field. OpenRouter requires a model (doesn't support "auto"), returning 400 "No models provided".
+  - Fix: `chatCompletion` now has the same `resolveAutoModel` logic as `streamChatCompletion`: checks `defaultModels.chat` from settings. If a default is configured, uses it. If not, falls back to the SDK (which handles "auto" natively).
+  - Verified: document generation works → generated cold email content appears in the editor.
+- **Fixed chat** (already fixed in Task 14, verified again):
+  - `streamChatCompletion` with "auto" → SDK fallback → AI responds.
+- **Fixed Defaults tab to show approved models**:
+  - Already fixed in Task 14 — verified again: approved model "Ling-3.0-flash (free)" appears in all 13 use-case dropdowns alongside "Nexus Auto".
+- **Fixed Routing tab to show approved models**:
+  - Added `useQuery` for `GET /api/admin/models/registry?layer=approved` to `RoutingSection`.
+  - `modelOptions` built from approved registry models + fallback to old enabled models.
+  - Verified: approved model appears in both primary and fallback dropdowns for all routing use cases.
+- **Verified all AI features in browser**:
+  - AI Chat: sent "Say hello" → AI responded ✓
+  - AI Images: generated "A simple blue circle" → image appears in gallery ✓
+  - AI Documents: generated cold email → editor shows content with Preview/Export/Save ✓
+  - Defaults tab: approved model in dropdowns ✓
+  - Routing tab: approved model in primary/fallback dropdowns ✓
+  - All 9 AI Infrastructure tabs render without errors ✓
+  - ESLint clean, no runtime errors ✓
+
+Stage Summary:
+- Image generation, document generation, and chat all work — using the SDK fallback when the configured provider (OpenRouter) doesn't support the feature or when "auto" model routing is needed.
+- Defaults and Routing tabs now show approved models from the three-layer registry.
+- All AI features are functional with real API calls — no demos, no mocks.
