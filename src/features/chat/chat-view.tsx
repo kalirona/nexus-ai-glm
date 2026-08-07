@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ChatDto, type MessageDto } from "@/lib/api-client";
-import { AI_MODELS } from "@/lib/constants";
 import { useWorkspace } from "@/store/workspace";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { cn } from "@/lib/utils";
@@ -78,7 +77,8 @@ export function ChatView() {
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [draft, setDraft] = useState("");
-  const [model, setModel] = useState("auto");
+  // Model selection is managed ONLY in AI Infrastructure — chat always uses "auto"
+  const model = "auto";
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
@@ -419,36 +419,7 @@ export function ChatView() {
             </p>
           </div>
 
-          {/* Model selector — only visible to super admins */}
-          {user?.isAdmin && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  {AI_MODELS.find((m) => m.id === model)?.name ?? "Auto"}
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuLabel className="text-xs text-muted-foreground">Choose a model</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {AI_MODELS.map((m) => (
-                  <DropdownMenuItem
-                    key={m.id}
-                    onClick={() => setModel(m.id)}
-                    className="flex flex-col items-start gap-0.5 py-2"
-                  >
-                    <div className="flex w-full items-center gap-2">
-                      <span className="text-sm font-medium">{m.name}</span>
-                      <Badge variant="secondary" className="ml-auto text-[10px]">{m.badge}</Badge>
-                      {model === m.id && <Check className="h-3.5 w-3.5 text-primary" />}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{m.description}</p>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          {/* Model selector removed from chat UI — managed only in AI Infrastructure */}
 
           {activeChat && (
             <>
@@ -545,7 +516,7 @@ export function ChatView() {
               <span className="inline-flex items-center gap-1">
                 <Zap className="h-3 w-3" /> 1 credit / message
               </span>
-              <span>{user?.isAdmin ? (model === "auto" ? "Nexus Auto routing" : AI_MODELS.find((m) => m.id === model)?.name) : "Powered by NexusAI"}</span>
+              <span>Powered by NexusAI</span>
             </div>
           </div>
         </div>

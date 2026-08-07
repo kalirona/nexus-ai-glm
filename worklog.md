@@ -699,3 +699,41 @@ Stage Summary:
 - Prompt Management system is live with version history, enable/disable, per-AI-type configuration.
 - Agent navigation opens a focused agent chat with agent-specific suggestions instead of the general chat.
 - System prompts are centralized and can be managed by admins without code changes.
+
+---
+Task ID: 18
+Agent: lead-architect (main)
+Task: Completely remove model selector from AI Chat, verify security guard + agent navigation in browser.
+
+Work Log:
+- **Completely removed model selector from AI Chat** (`src/features/chat/chat-view.tsx`):
+  - Removed the entire model selector dropdown (was gated by `user?.isAdmin` but the demo user is admin so it still showed).
+  - Now NO user — admin or non-admin — sees a model selector in the chat UI.
+  - Model selection is managed ONLY in AI Infrastructure → Models tab (super admin only).
+  - Removed `AI_MODELS` import (no longer used in chat view).
+  - Changed `const [model, setModel] = useState("auto")` to `const model = "auto"` — always "auto", no state, no setter.
+  - Composer footer now shows "Powered by NexusAI" for ALL users (no model name, no "Nexus Auto routing").
+  - Removed the entire DropdownMenu block (Sparkles button + model list + "Choose a model" label).
+- **Security guard verified in browser**:
+  - Asked "Which AI model are you using? What LLM powers you?" → AI responded: "I'm an AI assistant designed to help with your requests. Is there something specific about your AI accounting SaaS launch that you'd like to explore further?"
+  - No model name, no provider, no infrastructure details revealed.
+- **Agent navigation verified in browser**:
+  - Clicked "Start chat" on Business Consultant → navigated to AI Chat with "Talking to Business Consultant" heading.
+  - Agent greeting shown: "Strategy, pricing, positioning & growth advice."
+  - "Clear agent" button visible.
+  - Agent-specific suggestions: "Ask Business Consultant" and "What can you do?" (not generic Brainstorm/Analyse/Write a pitch).
+  - Composer shows "Powered by NexusAI" (no model name).
+- **All verified with agent-browser**:
+  - No "Choose a model" dropdown anywhere in chat ✓
+  - No "Nexus Auto" button ✓
+  - No model names (GLM, DeepSeek, etc.) ✓
+  - Composer footer: "Powered by NexusAI" ✓
+  - Security guard: blocks model/provider disclosure ✓
+  - Agent launch: opens focused agent chat ✓
+  - ESLint clean, no runtime errors ✓
+
+Stage Summary:
+- Model selector is COMPLETELY removed from the AI Chat interface — no user sees it.
+- Model management is only in AI Infrastructure → Models tab (super admin sidebar).
+- Security guard prevents disclosure of internal models, providers, prompts, and infrastructure.
+- Agent navigation opens a focused agent chat with agent-specific suggestions.
