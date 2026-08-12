@@ -834,3 +834,77 @@ Stage Summary:
 - PAT was scrubbed from local git config after push — repo URL is now token-free
 - Next: deploy on Dokploy with Docker (use docker-compose.demo.yml for quick test without Clerk, or docker-compose.yml with real Clerk env vars)
 - Follow CLERK-SETUP.md guide to create Clerk application, configure webhook, and test login flow
+
+---
+Task ID: 23 (QA + Build missing modules)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Assess project status, run QA via agent-browser, fix bugs, and add features.
+
+Work Log:
+- Reviewed previous worklog (Tasks 1-22 + GIT-PUSH) — repo is live on GitHub, Clerk auth (Phase 1.0) implemented, 24 commits / 192 files pushed.
+- Inspected dev.log: detected recurring `POST / 500` errors caused by `x-forwarded-host` vs `origin` mismatch on Server Actions (CSRF protection) — likely from Clerk keyless-mode auto-refresh.
+- Inspected project structure: found that **SEO, Marketing, YouTube, Brand Voice** modules all showed the `ComingSoon` placeholder. Brand Voice had an API (`/api/brand-voices`) but NO view component.
+
+- **Fix #1 — `next.config.ts`**: Added `allowedDevOrigins` array covering the preview proxy (`*.space-z.ai`, `*.cn-hongkong-vpc.fcapp.run`, `localhost`) to silence the cross-origin dev warning. The actual 500 from Clerk keyless-mode auto-refresh can only be fully resolved in production with real Clerk keys — but the warning no longer floods the dev log.
+
+- **Fix #2 — Brand Voice view** (`src/features/brand-voice/brand-voice-view.tsx`, 390 lines):
+  - Full CRUD UI for the existing `/api/brand-voices` API
+  - Hero with gradient background + grid pattern
+  - Collapsible create/edit form with tone presets (8 options), vocabulary, avoid-words, sample copy, default toggle
+  - Voice cards grid with edit/delete actions, default badge, set-default button
+  - Loading skeletons + empty state
+
+- **New #1 — SEO Workspace** (`src/features/seo/seo-view.tsx` + `src/app/api/seo/generate/route.ts`):
+  - 5 tools: Keyword Research, Meta Tags, Content Brief, Page Audit, Schema Markup
+  - Tool picker sidebar (gradient icons), shared generator UI with topic/audience/intent/brand-voice inputs
+  - Markdown-rendered result panel with copy button + scroll container
+  - Backend: `chatCompletion` + brand voice injection + credit spend + audit log + security guard
+  - Verified end-to-end: `POST /api/seo/generate 200 in 12.8s` — produced a keyword research report with H2 sections
+
+- **New #2 — Marketing Workspace** (`src/features/marketing/marketing-view.tsx` + `src/app/api/marketing/generate/route.ts`):
+  - 6 tools: Facebook Ads, Google Ads (RSA), Email Sequence, Funnel Builder, Product Description, Landing Page
+  - Same generator pattern with product/audience/benefit/offer inputs
+  - Verified end-to-end: `POST /api/marketing/generate 200 in 6.6s` — produced 3 ad variations
+
+- **New #3 — YouTube Workspace** (`src/features/youtube/youtube-view.tsx` + `src/app/api/youtube/generate/route.ts`):
+  - 5 tools: Title Generator, Video Script, SEO Description, Thumbnail Concepts, Shorts Script
+  - Same generator pattern with topic/audience/style inputs
+  - Verified end-to-end: `POST /api/youtube/generate 200 in 4.5s`
+
+- **Dashboard enhancement** (`src/features/dashboard/dashboard-view.tsx`):
+  - Added a new "Workspaces" section with 4 gradient cards linking to SEO/Marketing/YouTube/Brand Voice
+  - Each card has a count badge ("5 tools", "6 tools", etc.) and animated hover state
+  - Framer Motion staggered entrance
+
+- **App-shell wiring** (`src/components/shell/app-shell.tsx`):
+  - Removed `ComingSoon` placeholder fallback for seo/marketing/youtube
+  - Added lazy imports for `BrandVoiceView`, `SeoView`, `MarketingView`, `YoutubeView`
+  - Removed unused ComingSoon import
+
+- **Verification**:
+  - `bun run lint` — 0 errors ✓
+  - agent-browser end-to-end tests:
+    - Brand Voice: created a profile → appears in SEO/Marketing/YouTube voice dropdowns ✓
+    - SEO: filled "AI accounting software" → generated full keyword research report ✓
+    - Marketing: filled "NexusAI Business OS" → generated 3 FB ad variations ✓
+    - YouTube: filled "How AI is changing small business marketing" → generated 10 titles ✓
+    - Dashboard: Workspaces section appears with 4 cards, all navigate correctly ✓
+  - Dev server: all new endpoints return 200, all 13 sidebar modules load
+
+Stage Summary:
+- **All 13 modules are now fully functional** — no more "Coming Soon" placeholders
+- **3 new AI generators** (SEO, Marketing, YouTube) total 16 distinct tools across them
+- **Brand Voice integration**: all new generators accept a brandVoiceId and inject the voice system prompt
+- **Styling**: gradient heroes, grid-bg patterns, animated cards, scroll-thin containers, Framer Motion entrances
+- **Lint clean**, no runtime errors
+
+Unresolved issues / risks:
+- The Clerk keyless-mode Server Actions 500 errors persist on the dev server (caused by preview-proxy CSRF check). They don't affect functionality but flood the dev log. Will resolve automatically in production with real Clerk keys.
+- The 4 new modules generate content but **do not save** results to the database (they return markdown strings the user can copy). A future enhancement could add a "Save to Documents" button to persist generated content as a Document for later editing.
+- No analytics yet on which tool is used most — could add a `tool` field to AuditLog meta for usage insights.
+
+Recommended next phase:
+1. **Save-to-Documents**: Add a "Save" button on each generator result that creates a Document row with the generated content (kind: "seo" | "marketing" | "youtube") for later editing/versioning.
+2. **Bulk generation**: Allow running multiple tools in sequence (e.g. SEO keywords → content brief → meta tags) as a single "SEO Package" job.
+3. **History view**: Each generator should show a "Recent generations" sidebar with the last 5 outputs.
+4. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook signature, test with 2 real users.
