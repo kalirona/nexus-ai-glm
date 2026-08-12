@@ -33,6 +33,10 @@ const ITEMS: { key: ModuleKey; label: string; hint: string; icon: typeof LayoutD
   { key: "documents", label: "AI Documents", hint: "Generate content", icon: FileText },
   { key: "images", label: "AI Images", hint: "Create visuals", icon: ImageIcon },
   { key: "agents", label: "AI Agents", hint: "Specialised assistants", icon: Bot },
+  { key: "seo", label: "SEO Workspace", hint: "Keywords, briefs & audits", icon: Search },
+  { key: "marketing", label: "Marketing Workspace", hint: "Ads, emails & funnels", icon: Megaphone },
+  { key: "youtube", label: "YouTube Workspace", hint: "Titles, scripts & thumbnails", icon: Youtube },
+  { key: "brand-voice", label: "Brand Voice", hint: "Tone & style profiles", icon: Palette },
   { key: "billing", label: "Plans & Credits", hint: "Upgrade / manage", icon: CreditCard },
   { key: "settings", label: "Settings", hint: "Account & brand voice", icon: SettingsIcon },
 ];
@@ -75,24 +79,6 @@ export function CommandPalette() {
           })}
         </CommandGroup>
         <CommandSeparator />
-        <CommandGroup heading="Coming soon">
-          <CommandItem value="seo workspace audit research">
-            <Search className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span className="flex-1">SEO Workspace</span>
-            <span className="text-xs text-muted-foreground">Soon</span>
-          </CommandItem>
-          <CommandItem value="marketing campaigns ads funnels">
-            <Megaphone className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span className="flex-1">Marketing Workspace</span>
-            <span className="text-xs text-muted-foreground">Soon</span>
-          </CommandItem>
-          <CommandItem value="youtube titles scripts thumbnails">
-            <Youtube className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span className="flex-1">YouTube Workspace</span>
-            <span className="text-xs text-muted-foreground">Soon</span>
-          </CommandItem>
-        </CommandGroup>
-        <CommandSeparator />
         <CommandGroup heading="Quick actions">
           <CommandItem value="generate image business graphic" onSelect={() => go("images")}>
             <Sparkles className="mr-2 h-4 w-4 text-primary" />
@@ -101,6 +87,18 @@ export function CommandPalette() {
           <CommandItem value="write business plan document" onSelect={() => go("documents")}>
             <Rocket className="mr-2 h-4 w-4 text-primary" />
             <span>Write a business plan</span>
+          </CommandItem>
+          <CommandItem value="seo package keywords brief meta" onSelect={() => go("seo")}>
+            <Search className="mr-2 h-4 w-4 text-primary" />
+            <span>Run SEO Package (3-in-1)</span>
+          </CommandItem>
+          <CommandItem value="marketing campaign ads email landing" onSelect={() => go("marketing")}>
+            <Megaphone className="mr-2 h-4 w-4 text-primary" />
+            <span>Run Campaign Package (3-in-1)</span>
+          </CommandItem>
+          <CommandItem value="youtube video titles script description" onSelect={() => go("youtube")}>
+            <Youtube className="mr-2 h-4 w-4 text-primary" />
+            <span>Run Video Package (3-in-1)</span>
           </CommandItem>
         </CommandGroup>
       </CommandList>

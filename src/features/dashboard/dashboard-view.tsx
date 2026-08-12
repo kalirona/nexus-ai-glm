@@ -327,6 +327,83 @@ export function DashboardView() {
           </div>
         </Card>
       </div>
+
+      {/* Recent documents + images */}
+      <div className="mt-3 grid gap-3 sm:mt-4 sm:gap-4 lg:grid-cols-2">
+        {/* Recent documents */}
+        <Card className="p-4 sm:p-5 md:p-6">
+          <div className="mb-3 flex items-center justify-between sm:mb-4">
+            <h3 className="text-sm font-semibold sm:text-base">Recent documents</h3>
+            <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setActiveModule("documents")}>
+              View all
+            </Button>
+          </div>
+          <div className="max-h-64 space-y-1 overflow-y-auto scroll-thin sm:max-h-72">
+            {(data?.recent.documents ?? []).length === 0 ? (
+              <EmptyHint icon={FileText} text="No documents yet — generate one" />
+            ) : (
+              data?.recent.documents.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => setActiveModule("documents")}
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted"
+                >
+                  <div className={cn(
+                    "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
+                    d.kind === "seo" ? "bg-amber-500/10 text-amber-500" :
+                    d.kind === "marketing" ? "bg-rose-500/10 text-rose-500" :
+                    d.kind === "youtube" ? "bg-red-500/10 text-red-500" :
+                    d.kind === "business-plan" ? "bg-emerald-500/10 text-emerald-500" :
+                    d.kind === "sales-copy" ? "bg-violet-500/10 text-violet-500" :
+                    d.kind === "email" ? "bg-sky-500/10 text-sky-500" :
+                    d.kind === "blog" ? "bg-teal-500/10 text-teal-500" :
+                    "bg-primary/10 text-primary"
+                  )}>
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{d.title}</p>
+                    <p className="truncate text-xs text-muted-foreground capitalize">{d.kind} · {timeAgo(d.updatedAt)}</p>
+                  </div>
+                  <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+                </button>
+              ))
+            )}
+          </div>
+        </Card>
+
+        {/* Recent images */}
+        <Card className="p-4 sm:p-5 md:p-6">
+          <div className="mb-3 flex items-center justify-between sm:mb-4">
+            <h3 className="text-sm font-semibold sm:text-base">Recent images</h3>
+            <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setActiveModule("images")}>
+              View all
+            </Button>
+          </div>
+          <div className="max-h-64 overflow-y-auto scroll-thin sm:max-h-72">
+            {(data?.recent.images ?? []).length === 0 ? (
+              <EmptyHint icon={ImageIcon} text="No images yet — create one" />
+            ) : (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {data?.recent.images.map((img) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setActiveModule("images")}
+                    className="group relative aspect-square overflow-hidden rounded-lg bg-muted transition-all hover:ring-2 hover:ring-primary"
+                  >
+                    <div className="grid h-full w-full place-items-center p-2 text-center">
+                      <ImageIcon className="h-5 w-5 text-muted-foreground/40 transition-colors group-hover:text-primary" />
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <p className="truncate text-[9px] font-medium text-white">{img.kind}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
