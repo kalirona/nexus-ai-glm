@@ -24,6 +24,7 @@ model User {
   isAdmin         Boolean  @default(false) // platform super admin
   status          String   @default("active") // active | suspended | banned
   clerkId         String?  @unique // Clerk user ID for real auth
+  preferences     String?  // JSON-encoded notification preferences
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

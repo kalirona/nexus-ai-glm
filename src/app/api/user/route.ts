@@ -19,18 +19,20 @@ export async function GET() {
     creditsResetAt: user.creditsResetAt,
     avatarUrl: user.avatarUrl,
     isAdmin: user.isAdmin,
+    preferences: user.preferences ? JSON.parse(user.preferences) : null,
   });
 }
 
-/** PATCH /api/user — update the current user's profile (name, avatarUrl). */
+/** PATCH /api/user — update the current user's profile (name, avatarUrl, preferences). */
 export async function PATCH(req: Request) {
   const user = await getCurrentUser();
   const body = (await req.json().catch(() => ({}))) as {
     name?: string;
     avatarUrl?: string;
+    preferences?: Record<string, boolean>;
   };
 
-  const data: { name?: string; avatarUrl?: string | null } = {};
+  const data: { name?: string; avatarUrl?: string | null; preferences?: string } = {};
   if (body.name !== undefined) {
     const name = body.name.trim();
     if (name.length < 1) return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
@@ -40,11 +42,24 @@ export async function PATCH(req: Request) {
   if (body.avatarUrl !== undefined) {
     data.avatarUrl = body.avatarUrl?.trim() || null;
   }
+  if (body.preferences !== undefined) {
+    // Validate it's a flat object of boolean values
+    const prefs = body.preferences;
+    if (typeof prefs !== "object" || prefs === null) {
+      return NextResponse.json({ error: "Preferences must be an object" }, { status: 400 });
+    }
+    for (const [k, v] of Object.entries(prefs)) {
+      if (typeof k !== "string" || typeof v !== "boolean") {
+        return NextResponse.json({ error: `Invalid preference: ${k}` }, { status: 400 });
+      }
+    }
+    data.preferences = JSON.stringify(prefs);
+  }
 
   const updated = await db.user.update({
     where: { id: user.id },
     data,
-    select: { id: true, name: true, email: true, avatarUrl: true },
+    select: { id: true, name: true, email: true, avatarUrl: true, preferences: true },
   });
 
   await logAudit(user.id, "user.update", "user", user.id, { fields: Object.keys(data) });

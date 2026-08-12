@@ -34,6 +34,7 @@ export interface UserDto {
   creditsResetAt: string | null;
   avatarUrl: string | null;
   isAdmin: boolean;
+  preferences?: Record<string, boolean> | null;
 }
 
 export interface ChatDto {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useCurrentUser } from "@/hooks/use-current-user";
@@ -257,13 +257,7 @@ function AccountTab({ user }: { user?: { name: string; email: string; plan: stri
 
       <Card className="p-4 sm:p-5">
         <h3 className="mb-3 text-sm font-semibold sm:text-base">Preferences</h3>
-        <div className="space-y-4">
-          <PrefRow label="Email notifications" desc="Product updates, tips and billing alerts" defaultChecked />
-          <Separator />
-          <PrefRow label="Marketing emails" desc="Occasional offers and new feature announcements" />
-          <Separator />
-          <PrefRow label="Usage alerts" desc="Notify me at 80% and 95% credit usage" defaultChecked />
-        </div>
+        <PreferencesSection />
       </Card>
 
       <Card className="p-4 sm:p-5">
@@ -850,14 +844,71 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PrefRow({ label, desc, defaultChecked }: { label: string; desc: string; defaultChecked?: boolean }) {
+/** Preferences section — persists to DB via PATCH /api/user { preferences }. */
+const PREF_KEYS = ["emailNotifications", "marketingEmails", "usageAlerts"] as const;
+const PREF_META: { key: typeof PREF_KEYS[number]; label: string; desc: string; default: boolean }[] = [
+  { key: "emailNotifications", label: "Email notifications", desc: "Product updates, tips and billing alerts", default: true },
+  { key: "marketingEmails", label: "Marketing emails", desc: "Occasional offers and new feature announcements", default: false },
+  { key: "usageAlerts", label: "Usage alerts", desc: "Notify me at 80% and 95% credit usage", default: true },
+];
+
+function PreferencesSection() {
+  const { data: user } = useCurrentUser();
+  const qc = useQueryClient();
+  const [prefs, setPrefs] = useState<Record<string, boolean>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  // Hydrate from user data
+  useEffect(() => {
+    if (user?.preferences) {
+      setPrefs(user.preferences as Record<string, boolean>);
+    } else {
+      // Apply defaults
+      const defaults: Record<string, boolean> = {};
+      for (const p of PREF_META) defaults[p.key] = p.default;
+      setPrefs(defaults);
+    }
+  }, [user?.preferences]);
+
+  const toggle = async (key: string, value: boolean) => {
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    setSavingKey(key);
+    try {
+      await api("/api/user", { method: "PATCH", body: JSON.stringify({ preferences: next }) });
+      qc.invalidateQueries({ queryKey: ["user"] });
+      toast.success(`${PREF_META.find((p) => p.key === key)?.label ?? key} ${value ? "enabled" : "disabled"}`);
+    } catch (e) {
+      // Revert on error
+      setPrefs((prev) => ({ ...prev, [key]: !value }));
+      toast.error(e instanceof Error ? e.message : "Failed to save preference");
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{desc}</p>
-      </div>
-      <Switch defaultChecked={defaultChecked} />
+    <div className="space-y-4">
+      {PREF_META.map((p, i) => (
+        <div key={p.key}>
+          {i > 0 && <Separator className="mb-4" />}
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">{p.label}</p>
+              <p className="text-xs text-muted-foreground">{p.desc}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {savingKey === p.key && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              <Switch
+                checked={prefs[p.key] ?? p.default}
+                onCheckedChange={(v) => toggle(p.key, v)}
+                disabled={savingKey === p.key}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
+
