@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type DocumentDto } from "@/lib/api-client";
 import { TEMPLATES } from "@/lib/constants";
@@ -22,6 +22,10 @@ import {
   Plus,
   Clock,
   Palette,
+  Search,
+  X,
+  Copy as CopyDoc,
+  Filter,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,11 +53,30 @@ export function DocumentsView() {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<DocumentDto | null>(null);
   const [mode, setMode] = useState<"gallery" | "generate" | "editor">("gallery");
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState<string>("all");
 
   const qc = useQueryClient();
   const { data: docs = [] } = useQuery<DocumentDto[]>({
     queryKey: ["documents"],
     queryFn: () => api<DocumentDto[]>("/api/documents"),
+  });
+
+  // Build kind filter chips from existing docs
+  const kindCounts: Record<string, number> = {};
+  for (const d of docs) {
+    kindCounts[d.kind] = (kindCounts[d.kind] ?? 0) + 1;
+  }
+  const kindChips = Object.entries(kindCounts).sort((a, b) => b[1] - a[1]);
+
+  // Filter docs by search + kind
+  const filteredDocs = docs.filter((d) => {
+    const matchSearch =
+      !search.trim() ||
+      d.title.toLowerCase().includes(search.toLowerCase()) ||
+      (d.tags ?? "").toLowerCase().includes(search.toLowerCase());
+    const matchKind = kindFilter === "all" || d.kind === kindFilter;
+    return matchSearch && matchKind;
   });
 
   const generate = useMutation({
@@ -85,6 +108,24 @@ export function DocumentsView() {
     },
   });
 
+  const duplicateDoc = useMutation({
+    mutationFn: (doc: DocumentDto) =>
+      api<DocumentDto>("/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          title: `${doc.title} (copy)`,
+          content: doc.content,
+          kind: doc.kind,
+          tags: doc.tags ?? undefined,
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      toast.success("Document duplicated");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // ---------- Editor ----------
   if (mode === "editor" && activeDoc) {
     return (
@@ -95,6 +136,7 @@ export function DocumentsView() {
           setMode("gallery");
         }}
         onDelete={() => removeDoc.mutate(activeDoc.id)}
+        onDuplicate={() => duplicateDoc.mutate(activeDoc)}
       />
     );
   }
@@ -157,20 +199,99 @@ export function DocumentsView() {
 
       {/* Recent documents */}
       <div className="mt-8">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-base font-semibold">Recent documents</h3>
-          <Button variant="ghost" size="sm" className="text-xs">
-            {docs.length} total
-          </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {filteredDocs.length}
+              {filteredDocs.length !== docs.length && ` of ${docs.length}`}
+            </span>
+          </div>
         </div>
+
+        {/* Search + kind filters */}
+        {docs.length > 0 && (
+          <div className="mb-4 space-y-2.5">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by title or tag…"
+                className="h-9 pl-8 pr-8 text-sm"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {kindChips.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Filter className="h-3 w-3 text-muted-foreground" />
+                <button
+                  onClick={() => setKindFilter("all")}
+                  className={cn(
+                    "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                    kindFilter === "all"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  All ({docs.length})
+                </button>
+                {kindChips.map(([kind, count]) => (
+                  <button
+                    key={kind}
+                    onClick={() => setKindFilter(kind)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize transition-colors",
+                      kindFilter === kind
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted",
+                      kind === "seo" && kindFilter === kind && "border-amber-500 bg-amber-500/10 text-amber-600",
+                      kind === "marketing" && kindFilter === kind && "border-rose-500 bg-rose-500/10 text-rose-600",
+                      kind === "youtube" && kindFilter === kind && "border-red-500 bg-red-500/10 text-red-600"
+                    )}
+                  >
+                    {kind} ({count})
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {docs.length === 0 ? (
           <Card className="flex flex-col items-center justify-center gap-2 p-10 text-center">
             <FileText className="h-8 w-8 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">No documents yet — pick a template to start.</p>
           </Card>
+        ) : filteredDocs.length === 0 ? (
+          <Card className="flex flex-col items-center justify-center gap-2 p-10 text-center">
+            <Search className="h-8 w-8 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              No documents match "{search}"
+              {kindFilter !== "all" && ` in ${kindFilter}`}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearch("");
+                setKindFilter("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          </Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {docs.map((d) => (
+            {filteredDocs.map((d) => (
               <Card
                 key={d.id}
                 className="group cursor-pointer p-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
@@ -183,17 +304,33 @@ export function DocumentsView() {
                   <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
                     <FileText className="h-4 w-4" />
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeDoc.mutate(d.id);
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex shrink-0 gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        duplicateDoc.mutate(d);
+                      }}
+                      aria-label="Duplicate"
+                      disabled={duplicateDoc.isPending}
+                    >
+                      <CopyDoc className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeDoc.mutate(d.id);
+                      }}
+                      aria-label="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 <p className="mt-2 truncate text-sm font-medium">{d.title}</p>
                 <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
@@ -335,13 +472,19 @@ function GenerateForm({
   );
 }
 
-function DocumentEditor({ doc, onBack, onDelete }: { doc: DocumentDto; onBack: () => void; onDelete: () => void }) {
+function DocumentEditor({ doc, onBack, onDelete, onDuplicate }: { doc: DocumentDto; onBack: () => void; onDelete: () => void; onDuplicate?: () => void }) {
   const [content, setContent] = useState(doc.content);
   const [title, setTitle] = useState(doc.title);
   const [view, setView] = useState<"preview" | "source">("preview");
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [wordCount, setWordCount] = useState(0);
   const qc = useQueryClient();
+
+  // Update word count when content changes
+  useEffect(() => {
+    setWordCount(content.trim() ? content.trim().split(/\s+/).length : 0);
+  }, [content]);
 
   const save = async () => {
     setSaving(true);
@@ -383,6 +526,11 @@ function DocumentEditor({ doc, onBack, onDelete }: { doc: DocumentDto; onBack: (
           <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
         </Button>
         <div className="flex-1" />
+        {onDuplicate && (
+          <Button variant="ghost" size="sm" onClick={onDuplicate}>
+            <CopyDoc className="mr-1.5 h-3.5 w-3.5" /> Duplicate
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive">
           <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
         </Button>
@@ -396,6 +544,9 @@ function DocumentEditor({ doc, onBack, onDelete }: { doc: DocumentDto; onBack: (
             onChange={(e) => setTitle(e.target.value)}
             className="h-9 flex-1 border-0 bg-transparent px-1 text-base font-semibold focus-visible:ring-0"
           />
+          <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
+            {wordCount.toLocaleString()} words
+          </span>
           <div className="flex rounded-lg border p-0.5">
             <button
               onClick={() => setView("preview")}
