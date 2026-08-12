@@ -737,3 +737,81 @@ Stage Summary:
 - Model management is only in AI Infrastructure → Models tab (super admin sidebar).
 - Security guard prevents disclosure of internal models, providers, prompts, and infrastructure.
 - Agent navigation opens a focused agent chat with agent-specific suggestions.
+
+---
+Task ID: 22 (Phase 1.0 — Real Clerk Implementation)
+Agent: lead-architect (main)
+Task: ACTUALLY implement Clerk authentication on disk — previous phases described it but never wrote the files.
+
+Work Log:
+- **Verified current state**: Previous worklog entries (Tasks 21, 22) claimed Clerk was implemented but repository inspection showed:
+  - `src/lib/auth.ts` still had the original demo-user code (no Clerk import)
+  - `src/components/providers.tsx` had no ClerkProvider
+  - `src/middleware.ts` did not exist
+  - `src/app/api/auth/webhook/route.ts` did not exist
+  - `prisma/schema.prisma` had no `clerkId` field
+  - `package.json` had `next-auth` (unused), NOT `@clerk/nextjs`
+  - `.env` only had `DATABASE_URL`
+  - Also: SEO/Marketing/YouTube/BrandVoice sidebar items still had `soon: true` badges, Brand Voice was missing from sidebar, ComingSoon placeholder was still active in app-shell, topbar was missing brand-voice title
+
+- **Dependencies**: `bun remove next-auth && bun add @clerk/nextjs svix`
+- **Prisma**: Added `clerkId String? @unique` to User model → `bun run db:push`
+- **ClerkProvider**: Added `<ClerkProvider>` wrapping ThemeProvider + QueryClientProvider in `src/components/providers.tsx`
+- **Middleware** (`src/middleware.ts`): 
+  - `AUTH_MODE=demo` → all routes pass through (getCurrentUser handles fallback)
+  - `AUTH_MODE=clerk` → `auth.protect()` on all non-public routes
+  - Public routes: `/api/auth/webhook`, `/api`
+- **Auth rewrite** (`src/lib/auth.ts`):
+  - `getCurrentUser()`: reads Clerk session via `currentUser()`, looks up by clerkId, falls back to email match, lazy-creates if new
+  - Banned users get 403
+  - `AUTH_MODE=demo` → falls back to demo user (Alex Founder)
+  - `AUTH_MODE=clerk` + no session → throws 401 (fail closed)
+  - `requireAdmin()` — unchanged contract
+  - `spendCredits()` — atomic conditional update (prevents negative balance)
+  - `logAudit()` — unchanged
+- **Webhook** (`src/app/api/auth/webhook/route.ts`):
+  - Svix signature verification when `CLERK_WEBHOOK_SECRET` is set
+  - `user.created` → upsert by clerkId with default plan + 200 credits (NOT isAdmin)
+  - `user.updated` → updates email/name/avatar only (NOT credits/plan/isAdmin)
+  - `user.deleted` → soft delete (status = "banned", data preserved)
+  - Idempotent (upsert/updateMany)
+  - Admin security: `isAdmin` NEVER set from webhook public_metadata
+- **Encryption** (`src/lib/crypto.ts`): Production fail-closed — throws if `ENCRYPTION_KEY` missing in production
+- **Sidebar fixes**: Removed `soon: true` from SEO/Marketing/YouTube, added Brand Voice nav item with Palette icon
+- **Topbar**: Added `brand-voice` title
+- **Store**: Added `brand-voice` to ModuleKey
+- **.env**: Full documentation of all required variables
+
+- **Verified on disk**:
+  - `@clerk/nextjs` in package.json ✅
+  - `svix` in package.json ✅
+  - `next-auth` removed ✅
+  - `clerkId` in Prisma schema ✅
+  - `src/middleware.ts` exists ✅
+  - `src/app/api/auth/webhook/route.ts` exists ✅
+  - `src/lib/auth.ts` rewritten with Clerk ✅
+  - `ClerkProvider` in providers.tsx ✅
+  - `.env` has all required variables documented ✅
+
+- **Tests performed**:
+  - All 13 modules load in browser (demo mode) ✅
+  - All 12 API routes return 200 ✅
+  - Chat streaming works ✅
+  - Webhook user.created → creates user with correct defaults (plan=free, credits=200, isAdmin=false) ✅
+  - Webhook idempotency → duplicate events don't create duplicates ✅
+  - Webhook user.updated → only updates safe fields (NOT credits/plan/isAdmin) ✅
+  - Webhook user.deleted → soft delete (status=banned, data preserved) ✅
+  - ESLint: 0 errors ✅
+
+- **REAL CLERK AUTHENTICATION HAS NOT YET BEEN VERIFIED.**
+  - No real Clerk application exists
+  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is empty
+  - `CLERK_SECRET_KEY` is empty
+  - Manual setup guide created at `/home/z/my-project/CLERK-SETUP.md`
+
+Stage Summary:
+- Clerk authentication is ACTUALLY implemented on disk for the first time.
+- The app works in demo mode (AUTH_MODE=demo) — all 13 modules functional.
+- In clerk mode, the app will fail closed (401) without real Clerk keys.
+- Webhook is functional with Svix verification (tested in demo mode without secret).
+- Manual setup guide at CLERK-SETUP.md walks through the exact steps to connect a real Clerk application.

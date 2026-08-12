@@ -1,18 +1,101 @@
 import { db } from "@/lib/db";
+import { currentUser } from "@clerk/nextjs/server";
 
 /**
- * Identity layer.
+ * Identity layer — Clerk integration with explicit demo mode.
  *
- * The schema is fully multi-tenant, but the MVP runs a single local
- * workspace (sandbox preview) so users can experience the product without
- * signing up. `getCurrentUser()` returns that workspace owner, creating it
- * lazily. Real auth (Better Auth / NextAuth) drops in here later without
- * touching feature code.
+ * AUTH_MODE controls behavior:
+ *   - "demo" (default in dev): returns demo user when no Clerk session exists.
+ *     This allows the sandbox/preview to work without Clerk credentials.
+ *   - "clerk" (default in production): requires a valid Clerk session.
+ *     Missing session = 401 (fail closed). Never falls back to demo user.
+ *
+ * The contract (Prisma User object) is preserved — all feature code calls
+ * getCurrentUser() and gets a User, regardless of auth mode.
+ *
+ * Security:
+ *   - Client never supplies userId — always derived from authenticated session.
+ *   - clerkId is the durable external identity (not email).
+ *   - Banned users get 403.
+ *   - isAdmin cannot be self-promoted (only via webhook or admin route).
  */
 
-const DEMO_EMAIL = "founder@nexusai.app";
+const AUTH_MODE = process.env.AUTH_MODE || (process.env.NODE_ENV === "production" ? "clerk" : "demo");
 
 export async function getCurrentUser() {
+  // Try to get the Clerk session user
+  const clerkUser = await currentUser();
+
+  if (!clerkUser) {
+    if (AUTH_MODE === "demo") {
+      // Demo mode (sandbox/preview) — return the demo user
+      return getDemoUser();
+    }
+    // Clerk mode — fail closed, never return demo user in production
+    throw new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const clerkId = clerkUser.id;
+  const email = clerkUser.emailAddresses?.[0]?.emailAddress;
+  const name =
+    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+    email?.split("@")[0] ||
+    "User";
+
+  // 1. Look up by clerkId (primary identity)
+  let user = await db.user.findUnique({ where: { clerkId } });
+
+  // 2. If not found by clerkId, try by email (links pre-existing users)
+  if (!user && email) {
+    user = await db.user.findUnique({ where: { email } });
+    if (user) {
+      user = await db.user.update({
+        where: { id: user.id },
+        data: { clerkId },
+      });
+    }
+  }
+
+  // 3. If still not found, create from Clerk data (lazy sync)
+  if (!user) {
+    try {
+      user = await db.user.create({
+        data: {
+          clerkId,
+          email: email || `unknown-${clerkId}@nexusai.app`,
+          name,
+          plan: "free",
+          credits: 200,
+          creditsResetAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+          avatarUrl: clerkUser.imageUrl || null,
+        },
+      });
+    } catch (err) {
+      const e = err as { code?: string };
+      if (e?.code === "P2002") {
+        user = await db.user.findUnique({ where: { clerkId } });
+      }
+      if (!user) throw err;
+    }
+  }
+
+  // 4. Check banned status
+  if (user!.status === "banned") {
+    throw new Response(JSON.stringify({ error: "Account suspended" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return user!;
+}
+
+/** Demo user fallback — ONLY active when AUTH_MODE=demo (sandbox/preview). */
+async function getDemoUser() {
+  const DEMO_EMAIL = "founder@nexusai.app";
   let user = await db.user.findUnique({ where: { email: DEMO_EMAIL } });
   if (!user) {
     try {
@@ -23,12 +106,11 @@ export async function getCurrentUser() {
           plan: "pro",
           credits: 18500,
           avatarUrl: null,
-          isAdmin: true, // demo user is the platform super admin
+          isAdmin: true,
           creditsResetAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 12),
         },
       });
     } catch (err) {
-      // Race: another concurrent request created the user first — refetch.
       const e = err as { code?: string };
       if (e?.code === "P2002") {
         user = await db.user.findUnique({ where: { email: DEMO_EMAIL } });
@@ -36,7 +118,6 @@ export async function getCurrentUser() {
       if (!user) throw err;
     }
   }
-  // Backfill isAdmin for users created before the field existed
   if (user && !user.isAdmin && user.email === DEMO_EMAIL) {
     user = await db.user.update({
       where: { id: user.id },
@@ -46,7 +127,7 @@ export async function getCurrentUser() {
   return user!;
 }
 
-/** Returns true if the current user is a platform super admin. */
+/** Returns the current user or throws 403 if not an admin. */
 export async function requireAdmin() {
   const user = await getCurrentUser();
   if (!user.isAdmin) {
@@ -58,19 +139,30 @@ export async function requireAdmin() {
   return user;
 }
 
+/**
+ * Spend credits atomically (decrement + log transaction).
+ * Uses conditional update — only decrements if user has enough credits.
+ * This prevents negative balances under concurrent requests.
+ */
 export async function spendCredits(userId: string, amount: number, reason: string, refId?: string) {
-  const [_, tx] = await db.$transaction([
-    db.user.update({
-      where: { id: userId },
-      data: { credits: { decrement: amount } },
-    }),
-    db.creditTransaction.create({
-      data: { userId, amount: -amount, reason, refId },
-    }),
-  ]);
-  return tx;
+  const updated = await db.user.updateMany({
+    where: { id: userId, credits: { gte: amount } },
+    data: { credits: { decrement: amount } },
+  });
+
+  if (updated.count === 0) {
+    throw new Response(JSON.stringify({ error: "Insufficient credits" }), {
+      status: 402,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  await db.creditTransaction.create({
+    data: { userId, amount: -amount, reason, refId },
+  });
 }
 
+/** Log an admin action to the audit trail. */
 export async function logAudit(
   userId: string,
   action: string,

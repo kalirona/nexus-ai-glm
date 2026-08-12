@@ -4,15 +4,42 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypt
  * AES-256-GCM encryption for API keys at rest.
  *
  * The encryption key is derived from ENCRYPTION_KEY env var via scrypt.
- * If no env key is set, a stable fallback is used (dev only — warn in logs).
- * Each ciphertext stores: iv(12) + authTag(16) + ciphertext, base64-encoded.
+ *
+ * SECURITY:
+ *   - In production (NODE_ENV=production or AUTH_MODE=clerk), ENCRYPTION_KEY MUST be set.
+ *   - If missing in production: throws fatal error (fail closed).
+ *   - In development: uses documented fallback with console warning.
+ *   - Each ciphertext stores: iv(12) + authTag(16) + ciphertext, base64-encoded.
  */
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
 
+const DEV_FALLBACK_KEY = "nexusai-dev-encryption-key-change-in-production";
+
+function isProduction(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.AUTH_MODE === "clerk";
+}
+
 function getEncryptionKey(): Buffer {
-  const secret = process.env.ENCRYPTION_KEY || "nexusai-dev-encryption-key-change-in-production";
+  const secret = process.env.ENCRYPTION_KEY;
+
+  if (!secret) {
+    if (isProduction()) {
+      // FAIL CLOSED — production must never use the dev fallback key
+      throw new Error(
+        "FATAL: ENCRYPTION_KEY environment variable is not set. " +
+          "Generate with: openssl rand -hex 32 — then set in .env"
+      );
+    }
+    // Development only — use documented fallback
+    console.warn(
+      "⚠️  ENCRYPTION_KEY not set — using development fallback key. " +
+        "DO NOT use in production. Set ENCRYPTION_KEY env var."
+    );
+    return scryptSync(DEV_FALLBACK_KEY, "nexusai-salt", 32);
+  }
+
   return scryptSync(secret, "nexusai-salt", 32);
 }
 
@@ -40,7 +67,6 @@ export function decrypt(ciphertext: string): string {
     decipher.setAuthTag(authTag);
     return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
   } catch {
-    // If decryption fails (wrong key, corrupted data), return empty
     return "";
   }
 }

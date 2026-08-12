@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Shield,
   Cpu,
+  Palette,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWorkspace, type ModuleKey } from "@/store/workspace";
@@ -82,14 +83,15 @@ const BASE_NAV: NavGroup[] = [
   {
     group: "Workspaces",
     items: [
-      { key: "seo", label: "SEO", icon: Search, soon: true },
-      { key: "marketing", label: "Marketing", icon: Megaphone, soon: true },
-      { key: "youtube", label: "YouTube", icon: Youtube, soon: true },
+      { key: "seo", label: "SEO", icon: Search },
+      { key: "marketing", label: "Marketing", icon: Megaphone },
+      { key: "youtube", label: "YouTube", icon: Youtube },
     ],
   },
   {
     group: "Account",
     items: [
+      { key: "brand-voice", label: "Brand Voice", icon: Palette },
       { key: "billing", label: "Plans & Credits", icon: CreditCard },
       { key: "settings", label: "Settings", icon: SettingsIcon },
     ],
