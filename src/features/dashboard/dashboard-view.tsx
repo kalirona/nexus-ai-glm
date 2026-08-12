@@ -404,6 +404,39 @@ export function DashboardView() {
           </div>
         </Card>
       </div>
+
+      {/* Activity timeline */}
+      <Card className="mt-3 p-4 sm:mt-4 sm:p-5 md:p-6">
+        <div className="mb-3 flex items-center justify-between sm:mb-4">
+          <h3 className="text-sm font-semibold sm:text-base">Recent activity</h3>
+          <Badge variant="outline" className="text-[10px]">Last 8 actions</Badge>
+        </div>
+        {(data?.recent.logs ?? []).length === 0 ? (
+          <EmptyHint icon={Clock} text="No activity yet — start creating" />
+        ) : (
+          <div className="relative space-y-3 pl-4">
+            {/* Vertical line */}
+            <div className="absolute left-1.5 top-1 bottom-1 w-px bg-border" />
+            {data?.recent.logs.map((log) => {
+              const meta = getLogMeta(log.action, log.resource);
+              return (
+                <div key={log.id} className="relative flex items-start gap-3">
+                  <div className={cn("absolute -left-3.5 mt-1.5 grid h-3 w-3 place-items-center rounded-full ring-2 ring-background", meta.dotColor)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">
+                      {meta.label}
+                      {log.resource && log.resource !== "package" && (
+                        <span className="ml-1 text-muted-foreground">· {log.resource}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{timeAgo(log.createdAt)}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -417,4 +450,17 @@ function EmptyHint({ icon: Icon, text }: { icon: typeof MessageSquare; text: str
       <p className="text-sm text-muted-foreground">{text}</p>
     </div>
   );
+}
+
+/** Maps an audit log action to a human label + coloured dot. */
+function getLogMeta(action: string, _resource: string): { label: string; dotColor: string } {
+  if (action.startsWith("chat.")) return { label: "Chat created", dotColor: "bg-emerald-500" };
+  if (action.startsWith("document.")) return { label: "Document generated", dotColor: "bg-amber-500" };
+  if (action.startsWith("image.")) return { label: "Image generated", dotColor: "bg-rose-500" };
+  if (action.startsWith("seo.")) return { label: "SEO content generated", dotColor: "bg-amber-500" };
+  if (action.startsWith("marketing.")) return { label: "Marketing content generated", dotColor: "bg-rose-500" };
+  if (action.startsWith("youtube.")) return { label: "YouTube content generated", dotColor: "bg-red-500" };
+  if (action.startsWith("brand-voice.")) return { label: "Brand voice updated", dotColor: "bg-fuchsia-500" };
+  if (action.startsWith("document.create")) return { label: "Document saved", dotColor: "bg-emerald-500" };
+  return { label: action.replace(/[._]/g, " "), dotColor: "bg-primary" };
 }
