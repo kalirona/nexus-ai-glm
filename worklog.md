@@ -1364,3 +1364,20 @@ Recommended next steps:
 2. After push, deploy on Dokploy — the Docker build should now succeed.
 3. Set `AUTH_MODE=demo` for initial testing, then switch to `clerk` when Clerk is configured.
 4. Generate an `ENCRYPTION_KEY` with `openssl rand -hex 32` and set it as an env var.
+
+---
+Task ID: GIT-PUSH-2
+Agent: main
+Task: Push all unpushed commits to GitHub with user-provided PAT.
+
+Work Log:
+- Updated remote URL with new PAT (github_pat_11AUPA25Q0tI7zvruQ10EM_...)
+- Ran `git push origin main` — succeeded (5c18b11..fa4ca80)
+- Removed PAT from git config (security: `git remote set-url origin https://github.com/kalirona/nexus-ai-glm.git`)
+- Verified: 47 total commits on remote, 0 unpushed
+
+Stage Summary:
+- All 23 unpushed commits are now live on GitHub at https://github.com/kalirona/nexus-ai-glm.git
+- The Docker deployment fix (10b1a61) is included — Dokploy build should now succeed
+- PAT was scrubbed from local git config after push
+- User can now deploy on Dokploy by pulling the latest code
