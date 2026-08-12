@@ -6,11 +6,14 @@ dev.log
 server.log
 db/*.db
 db/*.db-journal
+.env
 .env.local
 .env.production
 agent-ctx
 download
 tests
 skills
+examples
+tool-results
 *.md
 !CLERK-SETUP.md
