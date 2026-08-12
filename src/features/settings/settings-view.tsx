@@ -152,22 +152,84 @@ export function SettingsView() {
 function AccountTab({ user }: { user?: { name: string; email: string; plan: string; credits: number; isAdmin?: boolean } }) {
   const plan = PLANS.find((p) => p.id === (user?.plan ?? "free")) ?? PLANS[0];
   const { setActiveModule } = useWorkspace();
+  const qc = useQueryClient();
+  const [name, setName] = useState(user?.name ?? "");
+  const [saving, setSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api("/api/user", { method: "PATCH", body: JSON.stringify({ name }) });
+      qc.invalidateQueries({ queryKey: ["user"] });
+      toast.success("Profile saved");
+      setHasChanges(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card className="p-4 sm:p-5">
-        <h3 className="mb-4 text-sm font-semibold sm:text-base">Profile</h3>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-semibold sm:text-base">Profile</h3>
+          <div className="flex items-center gap-2">
+            <Avatar className="h-9 w-9">
+              <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
+                {(name || user?.name || "U").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          </div>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Full name</Label>
-            <Input defaultValue={user?.name} />
+            <Input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setHasChanges(e.target.value !== (user?.name ?? ""));
+              }}
+              placeholder="Your name"
+            />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Email</Label>
             <Input defaultValue={user?.email} disabled className="bg-muted/50" />
           </div>
         </div>
-        <div className="mt-4 flex justify-end">
-          <Button size="sm" onClick={() => toast.success("Profile saved (demo)")}>Save changes</Button>
+        <div className="mt-4 flex items-center justify-between">
+          {hasChanges ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400">Unsaved changes</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Changes are saved to your account</p>
+          )}
+          <div className="flex gap-2">
+            {hasChanges && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setName(user?.name ?? "");
+                  setHasChanges(false);
+                }}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+            )}
+            <Button
+              size="sm"
+              onClick={save}
+              disabled={saving || !hasChanges || !name.trim()}
+            >
+              {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1.5 h-3.5 w-3.5" />}
+              {saving ? "Saving" : "Save changes"}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -200,6 +262,31 @@ function AccountTab({ user }: { user?: { name: string; email: string; plan: stri
           <PrefRow label="Marketing emails" desc="Occasional offers and new feature announcements" />
           <Separator />
           <PrefRow label="Usage alerts" desc="Notify me at 80% and 95% credit usage" defaultChecked />
+        </div>
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold sm:text-base">Workspace tour</h3>
+            <p className="text-sm text-muted-foreground">See the 6-step onboarding guide again</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              try {
+                localStorage.removeItem("nexus-onboarding-dismissed");
+                toast.success("Tour will appear on next page load");
+                setTimeout(() => window.location.reload(), 1200);
+              } catch {
+                toast.error("Could not reset tour");
+              }
+            }}
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Replay tour
+          </Button>
         </div>
       </Card>
     </div>

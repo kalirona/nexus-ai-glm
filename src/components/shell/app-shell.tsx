@@ -6,6 +6,7 @@ import { Topbar } from "@/components/shell/topbar";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { PaywallModal } from "@/components/paywall/paywall-modal";
+import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
 import { useWorkspace } from "@/store/workspace";
 import { DashboardView } from "@/features/dashboard/dashboard-view";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,6 +77,7 @@ export function AppShell() {
       <MobileNav />
       <CommandPalette />
       <PaywallModal />
+      <OnboardingOverlay />
     </div>
   );
 }
