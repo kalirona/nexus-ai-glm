@@ -14,10 +14,14 @@ import {
   Copy,
   Check,
   Expand,
+  Search,
+  X,
+  Filter,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -44,11 +48,28 @@ export function ImagesView() {
   const [size, setSize] = useState("1024x1024");
   const [kind, setKind] = useState("graphic");
   const [preview, setPreview] = useState<{ base64: string; prompt: string } | null>(null);
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState<string>("all");
   const qc = useQueryClient();
 
   const { data: images = [] } = useQuery<{ id: string; prompt: string; size: string; kind: string; createdAt: string }[]>({
     queryKey: ["images"],
     queryFn: () => api("/api/images"),
+  });
+
+  // Build kind filter chips from existing images
+  const kindCounts: Record<string, number> = {};
+  for (const img of images) {
+    kindCounts[img.kind] = (kindCounts[img.kind] ?? 0) + 1;
+  }
+  const kindChips = Object.entries(kindCounts).sort((a, b) => b[1] - a[1]);
+
+  // Filter images by search + kind
+  const filteredImages = images.filter((img) => {
+    const matchSearch =
+      !search.trim() || img.prompt.toLowerCase().includes(search.toLowerCase());
+    const matchKind = kindFilter === "all" || img.kind === kindFilter;
+    return matchSearch && matchKind;
   });
 
   const generate = useMutation({
@@ -179,8 +200,65 @@ export function ImagesView() {
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-base font-semibold">Gallery</h3>
-            <Badge variant="outline">{images.length} images</Badge>
+            <Badge variant="outline">
+              {filteredImages.length}
+              {filteredImages.length !== images.length && ` of ${images.length}`} images
+            </Badge>
           </div>
+
+          {/* Search + kind filters */}
+          {images.length > 0 && (
+            <div className="mb-4 space-y-2.5">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by prompt…"
+                  className="h-9 pl-8 pr-8 text-sm"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {kindChips.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Filter className="h-3 w-3 text-muted-foreground" />
+                  <button
+                    onClick={() => setKindFilter("all")}
+                    className={cn(
+                      "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                      kindFilter === "all"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    All ({images.length})
+                  </button>
+                  {kindChips.map(([k, count]) => (
+                    <button
+                      key={k}
+                      onClick={() => setKindFilter(k)}
+                      className={cn(
+                        "rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize transition-colors",
+                        kindFilter === k
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      {k} ({count})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {generate.isPending && (
             <Card className="mb-4 grid aspect-square place-items-center border-dashed">
@@ -201,9 +279,27 @@ export function ImagesView() {
                 <p className="text-sm text-muted-foreground">Describe what you need and hit generate.</p>
               </div>
             </Card>
+          ) : filteredImages.length === 0 ? (
+            <Card className="flex min-h-[200px] flex-col items-center justify-center gap-3 text-center">
+              <Search className="h-8 w-8 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">
+                No images match "{search}"
+                {kindFilter !== "all" && ` in ${kindFilter}`}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setKindFilter("all");
+                }}
+              >
+                Clear filters
+              </Button>
+            </Card>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {images.map((img, i) => (
+              {filteredImages.map((img, i) => (
                 <ImageCard
                   key={img.id}
                   id={img.id}
