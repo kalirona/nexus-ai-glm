@@ -13,6 +13,8 @@ import {
   Clapperboard,
   Copy,
   Loader2,
+  Layers,
+  Zap,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,15 @@ interface BrandVoice {
 }
 
 const TOOLS = [
+  {
+    id: "package",
+    label: "Video Package",
+    desc: "Titles + Script + Description in one job.",
+    icon: Layers,
+    accent: "from-fuchsia-500 via-rose-500 to-amber-500",
+    hint: "3-in-1 bulk job · saves as a single Document",
+    isPackage: true,
+  },
   {
     id: "titles",
     label: "Title Generator",
@@ -115,6 +126,68 @@ export function YoutubeView() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Video Package — runs 3 tools in sequence + auto-saves as a Document
+  const packageM = useMutation({
+    mutationFn: () =>
+      api<{
+        results: { titles: string; script: string; description: string };
+        documentId: string;
+        credits: number;
+      }>("/api/youtube/package", {
+        method: "POST",
+        body: JSON.stringify({
+          topic,
+          audience,
+          intent,
+          brandVoiceId: brandVoiceId || undefined,
+        }),
+      }),
+    onSuccess: (data) => {
+      const combined = [
+        `# Video Package — ${topic}`,
+        "",
+        `**Length:** ${audience || "8-12 minutes"}  `,
+        `**Style:** ${intent}  `,
+        `**Saved to Documents** · ${data.credits} credits left`,
+        "",
+        "---",
+        "",
+        "## 1. High-CTR Titles",
+        "",
+        data.results.titles,
+        "",
+        "---",
+        "",
+        "## 2. Video Script",
+        "",
+        data.results.script,
+        "",
+        "---",
+        "",
+        "## 3. SEO Description",
+        "",
+        data.results.description,
+      ].join("\n");
+      setResult(combined);
+      qc.invalidateQueries({ queryKey: ["user"] });
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      qc.invalidateQueries({ queryKey: ["generator-history", "youtube"] });
+      toast.success(`Video Package complete — saved to Documents · ${data.credits} credits left`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const isPackage = activeTool === "package";
+  const isGenerating = generateM.isPending || packageM.isPending;
+
+  const handleGenerate = () => {
+    if (isPackage) {
+      packageM.mutate();
+    } else {
+      generateM.mutate();
+    }
+  };
+
   const tool = TOOLS.find((t) => t.id === activeTool)!;
 
   const copyResult = () => {
@@ -160,6 +233,7 @@ export function YoutubeView() {
             {TOOLS.map((t, idx) => {
               const Icon = t.icon;
               const active = activeTool === t.id;
+              const isPkg = "isPackage" in t && t.isPackage;
               return (
                 <motion.button
                   key={t.id}
@@ -172,11 +246,24 @@ export function YoutubeView() {
                   }}
                   className={cn(
                     "group relative flex items-start gap-3 overflow-hidden rounded-xl border p-3 text-left transition-all hover:shadow-sm",
-                    active ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card hover:border-primary/40"
+                    active
+                      ? isPkg
+                        ? "border-fuchsia-500 bg-fuchsia-500/5 ring-1 ring-fuchsia-500/30"
+                        : "border-primary bg-primary/5 ring-1 ring-primary/20"
+                      : "bg-card hover:border-primary/40",
+                    isPkg && !active && "border-fuchsia-500/30"
                   )}
                 >
                   {active && (
-                    <span className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+                    <span
+                      className={cn(
+                        "absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full",
+                        isPkg ? "bg-fuchsia-500" : "bg-primary"
+                      )}
+                    />
+                  )}
+                  {isPkg && (
+                    <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-fuchsia-500" />
                   )}
                   <div
                     className={cn(
@@ -189,12 +276,25 @@ export function YoutubeView() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-1">
                       <p className="truncate text-sm font-medium">{t.label}</p>
-                      <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                        #{idx + 1}
-                      </span>
+                      {isPkg ? (
+                        <Badge className="bg-gradient-to-r from-fuchsia-500 to-rose-500 px-1.5 py-0 text-[9px] font-bold uppercase text-white">
+                          <Zap className="mr-0.5 h-2.5 w-2.5" /> 3x
+                        </Badge>
+                      ) : (
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                          #{idx}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{t.desc}</p>
-                    <p className="mt-1 truncate text-[10px] font-medium text-primary/70">{t.hint}</p>
+                    <p
+                      className={cn(
+                        "mt-1 truncate text-[10px] font-medium",
+                        isPkg ? "text-fuchsia-600/80 dark:text-fuchsia-400/80" : "text-primary/70"
+                      )}
+                    >
+                      {t.hint}
+                    </p>
                   </div>
                 </motion.button>
               );
@@ -209,11 +309,29 @@ export function YoutubeView() {
               <div className={cn("grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br text-white", tool.accent)}>
                 <tool.icon className="h-5 w-5" />
               </div>
-              <div>
-                <h3 className="text-base font-semibold">{tool.label}</h3>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold">{tool.label}</h3>
+                  {isPackage && (
+                    <Badge className="gap-1 bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white">
+                      <Zap className="h-3 w-3" /> 3-in-1
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">{tool.desc}</p>
               </div>
             </div>
+
+            {isPackage && (
+              <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 px-3.5 py-2.5">
+                <Layers className="mt-0.5 h-4 w-4 shrink-0 text-fuchsia-500" />
+                <p className="text-xs text-fuchsia-700 dark:text-fuchsia-400">
+                  <span className="font-medium">Video Package runs 3 tools in sequence</span> —
+                  Titles → Script → SEO Description. Costs 3x credits. The combined
+                  result is auto-saved to Documents so you have a complete video kit in one place.
+                </p>
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -282,27 +400,29 @@ export function YoutubeView() {
 
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
-                onClick={() => generateM.mutate()}
-                disabled={!topic.trim() || generateM.isPending}
-                className="gap-1.5"
+                onClick={handleGenerate}
+                disabled={!topic.trim() || isGenerating}
+                className={cn("gap-1.5", isPackage && "bg-gradient-to-r from-fuchsia-500 to-rose-500 hover:from-fuchsia-600 hover:to-rose-600")}
               >
-                {generateM.isPending ? (
+                {isGenerating ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isPackage ? (
+                  <Layers className="h-4 w-4" />
                 ) : (
                   <Sparkles className="h-4 w-4" />
                 )}
-                Generate
+                {isPackage ? "Run Video Package" : "Generate"}
               </Button>
               {result && (
                 <Button variant="outline" onClick={copyResult} className="gap-1.5">
-                  <Copy className="h-4 w-4" /> Copy
+                  <Copy className="h-4 w-4" /> {isPackage ? "Copy package" : "Copy"}
                 </Button>
               )}
             </div>
 
             <GeneratorResultPanel
               module="youtube"
-              isLoading={generateM.isPending}
+              isLoading={isGenerating}
               result={result}
               toolLabel={tool.label}
               inputLabel={topic || "(untitled)"}

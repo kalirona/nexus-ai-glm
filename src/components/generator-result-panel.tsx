@@ -16,9 +16,11 @@ import {
   ChevronDown,
   ChevronRight,
   RefreshCw,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
 import { useGeneratorHistory, type HistoryEntry } from "@/hooks/use-generator-history";
@@ -54,6 +56,7 @@ export function GeneratorResultPanel({
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
   const [activeHistoryEntry, setActiveHistoryEntry] = useState<HistoryEntry | null>(null);
   const history = useGeneratorHistory(module);
 
@@ -83,6 +86,15 @@ export function GeneratorResultPanel({
   } else if (dbHistory && dbHistory[0]?.id !== history.entries[0]?.id) {
     history.hydrate(dbHistory);
   }
+
+  // Filter history by search query (matches toolLabel or input)
+  const filteredEntries = historySearch.trim()
+    ? history.entries.filter(
+        (e) =>
+          e.toolLabel.toLowerCase().includes(historySearch.toLowerCase()) ||
+          e.input.toLowerCase().includes(historySearch.toLowerCase())
+      )
+    : history.entries;
 
   const copy = () => {
     navigator.clipboard.writeText(result);
@@ -241,54 +253,83 @@ export function GeneratorResultPanel({
               No history yet — generate something to see it here.
             </p>
           ) : (
-            <div className="max-h-64 overflow-y-auto scroll-thin">
-              {history.entries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={cn(
-                    "group flex items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0 transition-colors hover:bg-muted/50",
-                    activeHistoryEntry?.id === entry.id && "bg-primary/5"
+            <>
+              {/* Search filter */}
+              <div className="border-b bg-muted/20 px-3 py-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    placeholder="Search history…"
+                    className="h-7 pl-7 pr-2 text-xs"
+                  />
+                  {historySearch && (
+                    <button
+                      onClick={() => setHistorySearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   )}
-                >
-                  <button
-                    onClick={() => {
-                      setActiveHistoryEntry(entry);
-                      setShowHistory(false);
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  >
-                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                      <Clock className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">{entry.toolLabel}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">{entry.input}</p>
-                    </div>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
-                      {timeAgo(entry.createdAt)}
-                    </span>
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 shrink-0 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                    onClick={() => history.remove(entry.id)}
-                    aria-label="Remove from history"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
                 </div>
-              ))}
-              <button
-                onClick={() => {
-                  history.clear();
-                  toast.success("History cleared");
-                }}
-                className="w-full p-2 text-center text-[11px] text-muted-foreground transition-colors hover:bg-destructive/5 hover:text-destructive"
-              >
-                Clear all history
-              </button>
-            </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto scroll-thin">
+                {filteredEntries.length === 0 ? (
+                  <p className="p-3 text-center text-xs text-muted-foreground">
+                    No matches for "{historySearch}"
+                  </p>
+                ) : (
+                  filteredEntries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        "group flex items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0 transition-colors hover:bg-muted/50",
+                        activeHistoryEntry?.id === entry.id && "bg-primary/5"
+                      )}
+                    >
+                      <button
+                        onClick={() => {
+                          setActiveHistoryEntry(entry);
+                          setShowHistory(false);
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                          <Clock className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium">{entry.toolLabel}</p>
+                          <p className="truncate text-[11px] text-muted-foreground">{entry.input}</p>
+                        </div>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {timeAgo(entry.createdAt)}
+                        </span>
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                        onClick={() => history.remove(entry.id)}
+                        aria-label="Remove from history"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+                <button
+                  onClick={() => {
+                    history.clear();
+                    toast.success("History cleared");
+                  }}
+                  className="w-full p-2 text-center text-[11px] text-muted-foreground transition-colors hover:bg-destructive/5 hover:text-destructive"
+                >
+                  Clear all history
+                </button>
+              </div>
+            </>
           )}
         </motion.div>
       )}
