@@ -13,6 +13,10 @@ import {
   Clock,
   Bot,
   CreditCard,
+  Search,
+  Megaphone,
+  Youtube,
+  Palette,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,6 +86,13 @@ export function DashboardView() {
     { title: "Write a Doc", desc: "Plans, contracts, emails", icon: FileText, module: "documents" as const, accent: "from-amber-500 to-orange-500" },
     { title: "Make Images", desc: "Logos, ads, thumbnails", icon: ImageIcon, module: "images" as const, accent: "from-rose-500 to-pink-500" },
     { title: "AI Agents", desc: "Specialised assistants", icon: Bot, module: "agents" as const, accent: "from-violet-500 to-fuchsia-500" },
+  ];
+
+  const workspaces = [
+    { title: "SEO Workspace", desc: "Keywords, briefs, audits, schema", icon: Search, module: "seo" as const, accent: "from-amber-500 to-orange-500", count: "5 tools" },
+    { title: "Marketing Workspace", desc: "Ads, emails, funnels, landing pages", icon: Megaphone, module: "marketing" as const, accent: "from-rose-500 to-pink-500", count: "6 tools" },
+    { title: "YouTube Workspace", desc: "Titles, scripts, thumbnails, shorts", icon: Youtube, module: "youtube" as const, accent: "from-red-500 to-rose-500", count: "5 tools" },
+    { title: "Brand Voice", desc: "Tone, vocabulary, style profiles", icon: Palette, module: "brand-voice" as const, accent: "from-fuchsia-500 to-rose-500", count: "Profiles" },
   ];
 
   return (
@@ -224,6 +235,38 @@ export function DashboardView() {
                 <ArrowUpRight className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground/40 transition-all group-hover:text-primary sm:right-4 sm:top-4 sm:h-4 sm:w-4" />
               </Card>
             </button>
+          );
+        })}
+      </div>
+
+      {/* Workspaces — full-featured modules */}
+      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:mt-4 sm:gap-3 md:grid-cols-2 lg:grid-cols-4">
+        {workspaces.map((ws, i) => {
+          const Icon = ws.icon;
+          return (
+            <motion.button
+              key={ws.title}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+              onClick={() => setActiveModule(ws.module)}
+              className="text-left"
+            >
+              <Card className="group relative h-full overflow-hidden p-4 transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-5">
+                <div className="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition-opacity group-hover:opacity-20 sm:h-24 sm:w-24" style={{ backgroundImage: `linear-gradient(to bottom right, var(--tw-gradient-stops))` }} />
+                <div className="flex items-start justify-between">
+                  <div className={cn("grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br text-white shadow-sm", ws.accent)}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">{ws.count}</Badge>
+                </div>
+                <p className="mt-3 text-sm font-semibold">{ws.title}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{ws.desc}</p>
+                <div className="mt-3 flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                  Open workspace <ArrowUpRight className="h-3 w-3" />
+                </div>
+              </Card>
+            </motion.button>
           );
         })}
       </div>

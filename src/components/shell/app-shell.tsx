@@ -7,7 +7,6 @@ import { CommandPalette } from "@/components/shell/command-palette";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { PaywallModal } from "@/components/paywall/paywall-modal";
 import { useWorkspace } from "@/store/workspace";
-import { ComingSoon } from "@/components/shell/coming-soon";
 import { DashboardView } from "@/features/dashboard/dashboard-view";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -21,6 +20,16 @@ const BillingView = lazy(() => import("@/features/billing/billing-view").then((m
 const SettingsView = lazy(() => import("@/features/settings/settings-view").then((m) => ({ default: m.SettingsView })));
 const AdminView = lazy(() => import("@/features/admin/admin-view").then((m) => ({ default: m.AdminView })));
 const AIInfraView = lazy(() => import("@/features/ai-infra/ai-infra-view").then((m) => ({ default: m.AIInfraView })));
+const BrandVoiceView = lazy(() =>
+  import("@/features/brand-voice/brand-voice-view").then((m) => ({ default: m.BrandVoiceView }))
+);
+const SeoView = lazy(() => import("@/features/seo/seo-view").then((m) => ({ default: m.SeoView })));
+const MarketingView = lazy(() =>
+  import("@/features/marketing/marketing-view").then((m) => ({ default: m.MarketingView }))
+);
+const YoutubeView = lazy(() =>
+  import("@/features/youtube/youtube-view").then((m) => ({ default: m.YoutubeView }))
+);
 
 function ModuleSkeleton() {
   return (
@@ -57,9 +66,10 @@ export function AppShell() {
             {activeModule === "settings" && <SettingsView />}
             {activeModule === "admin" && <AdminView />}
             {activeModule === "ai-infra" && <AIInfraView />}
-            {(activeModule === "seo" || activeModule === "marketing" || activeModule === "youtube") && (
-              <ComingSoon module={activeModule} />
-            )}
+            {activeModule === "brand-voice" && <BrandVoiceView />}
+            {activeModule === "seo" && <SeoView />}
+            {activeModule === "marketing" && <MarketingView />}
+            {activeModule === "youtube" && <YoutubeView />}
           </Suspense>
         </main>
       </div>
