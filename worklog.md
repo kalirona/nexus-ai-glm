@@ -908,3 +908,69 @@ Recommended next phase:
 2. **Bulk generation**: Allow running multiple tools in sequence (e.g. SEO keywords → content brief → meta tags) as a single "SEO Package" job.
 3. **History view**: Each generator should show a "Recent generations" sidebar with the last 5 outputs.
 4. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook signature, test with 2 real users.
+
+---
+Task ID: 24 (Save-to-Documents + History + Admin Insights)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Continue from Task 23 — implement the #1 recommended feature (Save-to-Documents), add generator history, polish styling, and add admin usage insights.
+
+Work Log:
+- Reviewed Task 23 worklog: 4 new workspace modules (Brand Voice, SEO, Marketing, YouTube) were built and verified end-to-end. The #1 recommended next step was "Save-to-Documents" — generators return markdown but don't persist to DB.
+- Ran agent-browser QA: all 13 modules load, all APIs return 200, no runtime errors. Clerk keyless-mode Server Actions 500 errors still flood dev log (preview-proxy CSRF check) but don't affect functionality.
+
+- **New #1 — Save-to-Documents** (`src/components/generator-result-panel.tsx`):
+  - Built a shared `GeneratorResultPanel` component used by SEO, Marketing, YouTube views
+  - "Save to Docs" button calls `POST /api/documents` with `kind: "seo"|"marketing"|"youtube"` and `tags: <tool name>`
+  - Extends `POST /api/documents` to accept `tags` field + log audit on creation
+  - Saved documents appear in the Documents module with colour-coded kind badges
+  - Invalidates the `documents` query so the Documents list refreshes instantly
+
+- **New #2 — Generator History** (`src/hooks/use-generator-history.ts`):
+  - `useGeneratorHistory(module)` hook persists the last 10 generations per module in localStorage
+  - Each entry stores: tool id, tool label, input summary, full result, timestamp
+  - Lazy-initialised state from localStorage (no useEffect+setState — avoids React 19 cascading-render lint rule)
+  - API: `add()`, `remove(id)`, `clear()`
+  - History sidebar in GeneratorResultPanel: collapsible, click-to-revisit, per-entry delete, clear-all
+  - "From history" badge when viewing a past result (Copy/Save buttons hidden for history items)
+
+- **New #3 — Admin Usage Insights** (`src/app/api/admin/stats/route.ts` + `src/features/admin/admin-view.tsx`):
+  - `/api/admin/stats` now queries `auditLog` for `seo.generate` / `marketing.generate` / `youtube.generate` actions from the last 30 days
+  - Groups by action+resource and returns `toolUsage[]` (top 10 most-used tools)
+  - OverviewSection renders a ranked horizontal bar chart with module-coloured bars (amber=SEO, rose=Marketing, red=YouTube)
+  - Each bar shows: rank number, tool name, module badge, run count, gradient progress bar
+  - Empty state: "No generator usage yet" with explanation
+
+- **Styling polish** (all 3 generator views):
+  - Tool picker cards: active left-rail indicator (absolute-positioned bar), numbered badges (#1, #2...), hint text per tool, hover scale on gradient icons, Framer Motion staggered entrance (opacity + x-offset)
+  - Each tool now has a `hint` field describing what it produces (e.g. "10 titles ≤70 chars · proven CTR patterns")
+  - Document kind badges are now colour-coded by type (SEO=amber, Marketing=rose, YouTube=red, business-plan=emerald, sales-copy=violet, email=sky, blog=teal)
+  - Document cards show `tags` (the tool name that produced them) as a muted suffix
+
+- **Refactoring**:
+  - Extracted the result panel (loading skeleton, empty state, markdown render, copy button, save button, history sidebar) into a single reusable `GeneratorResultPanel` — removed ~60 lines of duplication across SEO/Marketing/YouTube views
+  - Removed unused imports (Skeleton, Markdown, FileText) from the 3 generator views
+
+- **Verification**:
+  - `bun run lint` — 0 errors ✓
+  - `npx tsc --noEmit --skipLibCheck` — 0 errors in all new/modified files ✓
+  - Pre-existing TS errors in other files (chat-view, billing-view, paywall-modal) are unchanged and suppressed by `typescript.ignoreBuildErrors: true`
+  - **Browser verification was NOT possible** — the dev server went down mid-round and did not auto-restart within the ~5 minute window I waited. Code is verified via lint + tsc only.
+
+Stage Summary:
+- **Save-to-Documents** is live across all 16 generator tools (5 SEO + 6 Marketing + 5 YouTube) — users can now persist any generated content as a Document
+- **Generator history** persists the last 10 outputs per module in localStorage — users can revisit, re-copy, or re-save past generations without spending credits
+- **Admin usage insights** give super admins visibility into which generator tools are most popular — colour-coded bar chart in the Overview section
+- **Styling** is more polished: active tool indicator, numbered badges, hint text, hover animations, colour-coded document kinds
+- **Code quality**: shared component eliminates duplication, lazy-init hook avoids React 19 lint rule
+
+Unresolved issues / risks:
+- **Dev server went down** during this round and did not auto-restart. The code is verified by lint + tsc but NOT by browser end-to-end testing. The next round should verify the Save-to-Documents flow in the browser once the dev server is back up.
+- The Clerk keyless-mode Server Actions 500 errors persist (caused by preview-proxy CSRF check). Will resolve automatically in production with real Clerk keys.
+- Generator history is stored in localStorage (per-browser). If a user switches devices, their history won't follow. A future enhancement could persist history to the DB (new `GeneratorHistory` model).
+- The `toolUsage` admin chart only shows SEO/Marketing/YouTube generators. Chat, Documents, Images usage is already shown in the existing totals cards. Could add a combined "all actions" view later.
+
+Recommended next phase:
+1. **Browser verification**: Once the dev server is back up, test the Save-to-Documents flow end-to-end (generate → save → check Documents module) and the history sidebar.
+2. **Persist history to DB**: Add a `GeneratorHistory` Prisma model so history follows users across devices.
+3. **Bulk generation**: Allow running multiple SEO tools in sequence (keywords → content brief → meta tags) as a single "SEO Package" job.
+4. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook signature, test with 2 real users.
