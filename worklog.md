@@ -1139,3 +1139,61 @@ Recommended next phase:
 3. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook.
 4. **Settings page enhancements**: editable profile, notification preferences persistence.
 5. **Onboarding tour**: first-time user guide highlighting all 13 modules.
+
+---
+Task ID: 29 (Profile editing API + onboarding tour)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Add profile editing with persistence, onboarding tour, and styling polish.
+
+Work Log:
+- Reviewed state: 15 unpushed commits. Dev server has been DOWN for 6+ rounds — did NOT auto-restart. All work verified via `bun run lint` (0 errors).
+
+- **New: Profile editing API** (`src/app/api/user/route.ts`):
+  - Added `PATCH /api/user` endpoint — updates name + avatarUrl
+  - Validation: name 1-80 chars trimmed, avatarUrl optional/nullable
+  - Logs audit entry (`user.update`) with fields changed
+  - Returns updated user object
+
+- **Enhanced: Settings AccountTab** (`src/features/settings/settings-view.tsx`):
+  - Replaced fake "Save changes" with real `PATCH /api/user` call
+  - Live avatar preview (shows initials, updates as user types)
+  - "Unsaved changes" indicator (amber text) when name differs from saved
+  - Cancel button (reverts to saved name) + Save button (disabled when no changes)
+  - Loading state with spinner + "Saving" text
+  - Invalidates `user` query on success so sidebar/topbar update instantly
+  - Added "Workspace tour" card at bottom with "Replay tour" button
+
+- **New: Onboarding tour** (`src/components/onboarding/onboarding-overlay.tsx`):
+  - 6-step modal overlay shown on first visit (auto-dismissed via localStorage)
+  - Steps: Welcome → AI Chat & Agents → Documents & Images → SEO/Marketing/YouTube → Brand Voice → ⌘K tip
+  - Each step has a gradient header (different colour per step), icon, title, description
+  - Progress dots (clickable to jump to any step)
+  - "Skip tour" button in header, "Back"/"Next"/"Try it" buttons in footer
+  - "Try it" navigates to the featured module and dismisses the tour
+  - Framer Motion slide-in animation per step
+  - 1.2s delay on first load so the app renders before the tour appears
+  - Mounted globally in app-shell
+
+- **Replay tour**: Settings → Account → "Replay tour" button clears localStorage and reloads the page to show the tour again
+
+- **Verification**:
+  - `bun run lint` — 0 errors ✓ after each change
+  - **Browser verification NOT possible** — dev server down throughout
+
+Stage Summary:
+- **Profile editing is now real** — name changes persist to DB, avatar updates across sidebar/topbar/settings instantly
+- **Onboarding tour** — first-time users get a 6-step guided walkthrough of all major modules
+- **Replay tour** — existing users can re-trigger the tour from Settings
+- Lint clean, no TypeScript errors in new files
+
+Unresolved issues / risks:
+- **Dev server has been down for 6+ rounds** (Tasks 24-29). The system is supposed to auto-restart but hasn't. All code is verified via lint only. **BLOCKING**: browser testing is still needed.
+- **18 unpushed commits** — the previous GitHub PAT has expired. User needs to provide a new PAT to push.
+- The Clerk keyless-mode Server Actions 500 errors persist (preview-proxy CSRF check).
+
+Recommended next phase:
+1. **Browser verification** (BLOCKING): Once dev server is back, test profile editing, onboarding tour, and all features from Tasks 24-29.
+2. **Push to GitHub**: User needs to provide a new PAT — 18+ unpushed commits.
+3. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook.
+4. **Notification preferences persistence**: Currently the PrefRow switches are visual-only — wire them to a user.preferences JSON field.
+5. **API key management**: The API Keys tab exists but could use real key generation + usage tracking.
