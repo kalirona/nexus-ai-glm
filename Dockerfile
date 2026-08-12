@@ -63,16 +63,16 @@ RUN mkdir -p /app/data && chown -R nexus:nexus /app
 # Switch to non-root user
 USER nexus
 
-# Expose port
-EXPOSE 3000
+# Expose port (3011 to avoid conflicts with other apps on 3000)
+EXPOSE 3011
 
 # Set hostname
 ENV HOSTNAME="0.0.0.0"
-ENV PORT=3000
+ENV PORT=3011
 
 # Health check (wget installed above)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3011/api || exit 1
 
 # Use tini as PID 1 for proper signal handling
 ENTRYPOINT ["tini", "--", "/app/docker-entrypoint.sh"]

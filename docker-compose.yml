@@ -4,7 +4,7 @@ services:
     container_name: nexusai
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3011:3011"
     volumes:
       # Persist SQLite database
       - nexus-db:/app/data
@@ -13,6 +13,7 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=file:/app/data/nexus.db
       - HOSTNAME=0.0.0.0
+      - PORT=3011
 
       # ─── Auth Mode ───
       # Set to "clerk" when Clerk keys are configured
