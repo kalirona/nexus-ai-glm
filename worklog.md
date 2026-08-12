@@ -974,3 +974,65 @@ Recommended next phase:
 2. **Persist history to DB**: Add a `GeneratorHistory` Prisma model so history follows users across devices.
 3. **Bulk generation**: Allow running multiple SEO tools in sequence (keywords → content brief → meta tags) as a single "SEO Package" job.
 4. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook signature, test with 2 real users.
+
+---
+Task ID: 25 (DB-backed history + SEO Package bulk job)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Continue from Task 24 — implement recommended features #2 (DB-backed history) and #3 (bulk generation).
+
+Work Log:
+- Reviewed Task 24 worklog: Save-to-Documents, localStorage history, and admin usage insights were built. Recommended next steps: (1) browser verification of Save-to-Documents, (2) persist history to DB, (3) bulk generation, (4) Clerk setup.
+- Dev server was DOWN at the start of this round and remained down throughout (did not auto-restart within ~10 minutes of waiting). All code verified via `bun run lint` (0 errors) and `npx tsc --noEmit --skipLibCheck` (0 errors in new/modified files).
+
+- **New #1 — DB-backed generator history** (Prisma `GeneratorHistory` model):
+  - Added `GeneratorHistory` model to `prisma/schema.prisma`: id, userId, module, tool, toolLabel, input, result, createdAt + indexes on [userId, module, createdAt] and [userId, createdAt]
+  - Added `history GeneratorHistory[]` relation to User model
+  - Ran `bun run db:push` — schema synced successfully
+  - New API: `GET /api/history?module=seo` (list, capped at 10, newest first), `POST /api/history` (create with auto-cap — deletes oldest beyond 10), `DELETE /api/history/:id`
+  - Rewrote `useGeneratorHistory` hook: now syncs with DB. Lazy-inits from localStorage (instant UI), then hydrates from DB via `useQuery`. `add()` does optimistic local update + async DB persist, replaces temp id with real DB id. `remove()` deletes locally + best-effort DB delete.
+  - `GeneratorResultPanel`: added `useQuery` for DB history, "Synced to cloud" indicator (green dot), Refresh button. History now follows users across devices/sessions.
+  - SEO/Marketing/YouTube views: `onSuccess` now invalidates `generator-history` query so the sidebar refreshes after each generation.
+
+- **New #2 — SEO Package bulk job** (`src/app/api/seo/package/route.ts` + SEO view):
+  - New API: `POST /api/seo/package` — runs 3 tools in sequence (keywords → content-brief → meta-tags) on a single topic
+  - Charges 3x document credits upfront (credit guard before running)
+  - Combines all 3 results into a single markdown document with H2 section headers
+  - Auto-saves to Documents (kind: "seo", tags: "SEO Package") so user has a complete SEO brief in one place
+  - Persists 3 separate history entries (one per tool) so each result is accessible individually in history
+  - SEO view: "SEO Package" is now the first tool option with distinct fuchsia gradient styling, "3x" badge, info banner explaining the bulk job, gradient generate button
+  - Tool picker: package card has fuchsia border, dot indicator, "3x" gradient badge instead of number
+  - Form: intent/type selector hidden in package mode (not applicable)
+  - Generate button: shows Package icon + "Run SEO Package" label, uses fuchsia gradient when in package mode
+
+- **Styling polish**:
+  - Package tool card: fuchsia border + ring when active, fuchsia left-rail indicator, small dot in top-right corner, "3x" gradient badge
+  - Info banner: fuchsia-tinted border + bg with Package icon and explanation text
+  - Generate button: gradient fuchsia→rose background in package mode
+  - History sidebar: new header with "Synced to cloud" green-dot indicator + Refresh button
+  - All transitions use Framer Motion for smooth entrance/hover
+
+- **Verification**:
+  - `bun run lint` — 0 errors ✓
+  - `npx tsc --noEmit --skipLibCheck` — 0 errors in all new/modified files ✓
+  - Prisma schema synced to DB successfully (`bun run db:push`) ✓
+  - **Browser verification NOT possible** — dev server down throughout this round
+
+Stage Summary:
+- **Generator history is now DB-backed** — follows users across devices/sessions. localStorage is just an optimistic cache for instant UI. Capped at 10 per module with auto-eviction of oldest.
+- **SEO Package bulk job** — one click runs 3 SEO tools in sequence and saves a combined Document. Distinct fuchsia styling makes it stand out as a premium feature.
+- **Code quality**: shared hook + panel pattern keeps the 3 generator views DRY. DB is source of truth, localStorage is cache.
+- **Lint clean**, no TypeScript errors in new files.
+
+Unresolved issues / risks:
+- **Dev server has been down for 2+ rounds** (Task 24 and Task 25). The system is supposed to auto-restart `bun run dev` but it hasn't. All code is verified via lint + tsc but NOT browser-tested. The next round MUST verify:
+  1. Save-to-Documents flow (generate → save → check Documents module)
+  2. DB-backed history (generate → check history sidebar → refresh page → history persists)
+  3. SEO Package (run package → check combined result → check Documents for saved doc)
+  4. Admin usage insights (generate → check Super Admin overview for tool usage bars)
+- The Clerk keyless-mode Server Actions 500 errors persist (preview-proxy CSRF check). Will resolve in production with real Clerk keys.
+
+Recommended next phase:
+1. **Browser verification** (BLOCKING): Once dev server is back up, test all 4 flows above end-to-end via agent-browser.
+2. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook signature, test with 2 real users.
+3. **Marketing Package + YouTube Package**: Extend the bulk-job pattern to Marketing (e.g. "Campaign Package": FB ads + email sequence + landing page) and YouTube (e.g. "Video Package": titles + script + description).
+4. **History search**: Add a search/filter input in the history sidebar to find past generations by keyword.
