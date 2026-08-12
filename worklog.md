@@ -1249,3 +1249,59 @@ Recommended next phase:
 3. **API key authentication**: Add middleware to validate `Authorization: Bearer nexus_…` headers on public API routes (for programmatic access).
 4. **Notification preferences persistence**: Wire the PrefRow switches to a user.preferences JSON field.
 5. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook.
+
+---
+Task ID: 31 (Notification preferences persistence)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Wire the notification preference switches to real DB persistence.
+
+Work Log:
+- Reviewed state: 21 unpushed commits. Dev server has been DOWN for 8+ rounds — did NOT auto-restart. All work verified via `bun run lint` (0 errors).
+
+- **Prisma schema** (`prisma/schema.prisma`):
+  - Added `preferences String?` to User model (JSON-encoded notification prefs)
+  - Ran `bun run db:push` — schema synced successfully
+
+- **API** (`src/app/api/user/route.ts`):
+  - `GET /api/user` now returns parsed `preferences` object (or null)
+  - `PATCH /api/user` now accepts `preferences: Record<string, boolean>`
+    - Validates: must be an object, all values must be boolean
+    - Stores as JSON string in the `preferences` column
+    - Logs audit entry with fields changed
+
+- **Types** (`src/lib/api-client.ts`):
+  - Added `preferences?: Record<string, boolean> | null` to `UserDto`
+
+- **Settings UI** (`src/features/settings/settings-view.tsx`):
+  - Replaced visual-only `PrefRow` component with `PreferencesSection`
+  - 3 preferences: `emailNotifications` (default: true), `marketingEmails` (default: false), `usageAlerts` (default: true)
+  - Hydrates from `user.preferences` on mount (or applies defaults if null)
+  - Each toggle: optimistic update → `PATCH /api/user { preferences }` → revert on error
+  - Per-switch loading spinner + disabled state while saving
+  - Toast confirmation ("Email notifications enabled/disabled")
+  - Invalidates `user` query on success so all components see the new state
+  - Separators between rows for visual clarity
+
+- **Verification**:
+  - `bun run lint` — 0 errors ✓
+  - `bun run db:push` — schema synced ✓
+  - **Browser verification NOT possible** — dev server down throughout
+
+Stage Summary:
+- **Notification preferences now persist to DB** — switches are no longer visual-only
+- **User model extended** with a flexible `preferences` JSON field (can store any future prefs)
+- **Optimistic UI** — switches toggle instantly, revert on error, with per-switch loading state
+- Lint clean, schema synced
+
+Unresolved issues / risks:
+- **Dev server has been down for 8+ rounds** (Tasks 24-31). The system is supposed to auto-restart but hasn't. All code is verified via lint only. **BLOCKING**: browser testing is still needed.
+- **23 unpushed commits** — the previous GitHub PAT has expired. User needs to provide a new PAT to push.
+- API keys are created but not yet authenticated against — there's no middleware that checks `Authorization: Bearer nexus_…` headers.
+- The Clerk keyless-mode Server Actions 500 errors persist (preview-proxy CSRF check).
+
+Recommended next phase:
+1. **Browser verification** (BLOCKING): Once dev server is back, test preferences persistence, API key management, profile editing, onboarding tour, and all features from Tasks 24-31.
+2. **Push to GitHub**: User needs to provide a new PAT — 23+ unpushed commits.
+3. **API key authentication middleware**: Validate `Authorization: Bearer nexus_…` headers on public API routes.
+4. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook.
+5. **Email/notification system**: Actually send emails based on the preferences (currently they're just stored).
