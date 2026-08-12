@@ -197,7 +197,24 @@ export function DocumentsView() {
                 </div>
                 <p className="mt-2 truncate text-sm font-medium">{d.title}</p>
                 <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="outline" className="text-[10px] capitalize">{d.kind}</Badge>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] capitalize",
+                      d.kind === "seo" && "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                      d.kind === "marketing" && "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+                      d.kind === "youtube" && "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
+                      d.kind === "business-plan" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                      d.kind === "sales-copy" && "border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400",
+                      d.kind === "email" && "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400",
+                      d.kind === "blog" && "border-teal-500/30 bg-teal-500/10 text-teal-600 dark:text-teal-400",
+                    )}
+                  >
+                    {d.kind}
+                  </Badge>
+                  {d.tags && (
+                    <span className="truncate text-[10px] text-muted-foreground/70">· {d.tags}</span>
+                  )}
                   <Clock className="h-3 w-3" />
                   {new Date(d.updatedAt).toLocaleDateString()}
                 </div>

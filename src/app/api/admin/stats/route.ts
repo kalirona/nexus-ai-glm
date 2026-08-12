@@ -19,6 +19,7 @@ export async function GET() {
     totalDocuments,
     totalImages,
     allTransactions,
+    toolAudits,
   ] = await Promise.all([
     db.user.count(),
     db.user.count({ where: { status: "active" } }),
@@ -32,6 +33,15 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       take: 90,
       select: { amount: true, reason: true, createdAt: true },
+    }),
+    // Recent generator usage — seo/marketing/youtube actions from the last 30 days
+    db.auditLog.findMany({
+      where: {
+        action: { in: ["seo.generate", "marketing.generate", "youtube.generate"] },
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+      select: { action: true, resource: true, createdAt: true },
+      take: 500,
     }),
   ]);
 
@@ -56,6 +66,25 @@ export async function GET() {
     });
   }
 
+  // Build tool usage breakdown — group audit logs by action+resource
+  // resource holds the tool id (e.g. "keywords", "fb-ad", "titles")
+  const toolCounts: Record<string, number> = {};
+  for (const a of toolAudits) {
+    const key = `${a.action}:${a.resource}`;
+    toolCounts[key] = (toolCounts[key] ?? 0) + 1;
+  }
+  const toolUsage = Object.entries(toolCounts)
+    .map(([key, count]) => {
+      const [action, resource] = key.split(":");
+      const moduleLabel =
+        action === "seo.generate" ? "SEO" :
+        action === "marketing.generate" ? "Marketing" :
+        action === "youtube.generate" ? "YouTube" : action;
+      return { module: moduleLabel, tool: resource, count };
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
   return NextResponse.json({
     totals: {
       users: totalUsers,
@@ -71,5 +100,6 @@ export async function GET() {
       estimatedMrr,
     },
     series: days,
+    toolUsage,
   });
 }

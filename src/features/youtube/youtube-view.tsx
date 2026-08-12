@@ -19,11 +19,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Markdown } from "@/components/markdown";
+import { GeneratorResultPanel } from "@/components/generator-result-panel";
+import { useGeneratorHistory } from "@/hooks/use-generator-history";
 
 interface BrandVoice {
   id: string;
@@ -38,6 +38,7 @@ const TOOLS = [
     desc: "10 high-CTR titles with CTR rationale.",
     icon: Type,
     accent: "from-red-500 to-rose-500",
+    hint: "10 titles ≤70 chars · proven CTR patterns",
   },
   {
     id: "script",
@@ -45,6 +46,7 @@ const TOOLS = [
     desc: "Retention-optimised script with hooks.",
     icon: FileText,
     accent: "from-orange-500 to-amber-500",
+    hint: "Timestamped script · hooks every 30s",
   },
   {
     id: "description",
@@ -52,6 +54,7 @@ const TOOLS = [
     desc: "Keyword-rich description with timestamps.",
     icon: Search,
     accent: "from-violet-500 to-fuchsia-500",
+    hint: "First 150 chars SEO hook · 5 hashtags",
   },
   {
     id: "thumbnail-ideas",
@@ -59,6 +62,7 @@ const TOOLS = [
     desc: "5 visual concepts with text + palette.",
     icon: ImageIcon,
     accent: "from-sky-500 to-cyan-500",
+    hint: "5 concepts · text overlay + colour palette",
   },
   {
     id: "shorts-script",
@@ -66,6 +70,7 @@ const TOOLS = [
     desc: "45-second vertical video script.",
     icon: Clapperboard,
     accent: "from-emerald-500 to-teal-500",
+    hint: "3-second hook · 30-60s vertical script",
   },
 ] as const;
 
@@ -77,6 +82,7 @@ export function YoutubeView() {
   const [intent, setIntent] = useState("educational");
   const [brandVoiceId, setBrandVoiceId] = useState<string>("");
   const [result, setResult] = useState<string>("");
+  const history = useGeneratorHistory("youtube");
 
   const { data: voices } = useQuery<BrandVoice[]>({
     queryKey: ["brand-voices"],
@@ -97,6 +103,13 @@ export function YoutubeView() {
       setResult(data.result);
       qc.invalidateQueries({ queryKey: ["user"] });
       toast.success(`Generated — ${data.credits} credits left`);
+      // Persist to local history
+      history.add({
+        tool: activeTool,
+        toolLabel: tool.label,
+        input: topic || "(untitled)",
+        result: data.result,
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -143,29 +156,46 @@ export function YoutubeView() {
             Tools
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-            {TOOLS.map((t) => {
+            {TOOLS.map((t, idx) => {
               const Icon = t.icon;
               const active = activeTool === t.id;
               return (
-                <button
+                <motion.button
                   key={t.id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.03 }}
                   onClick={() => {
                     setActiveTool(t.id);
                     setResult("");
                   }}
                   className={cn(
-                    "group flex items-start gap-3 rounded-xl border p-3 text-left transition-all hover:shadow-sm",
+                    "group relative flex items-start gap-3 overflow-hidden rounded-xl border p-3 text-left transition-all hover:shadow-sm",
                     active ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card hover:border-primary/40"
                   )}
                 >
-                  <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white", t.accent)}>
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+                  )}
+                  <div
+                    className={cn(
+                      "grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white shadow-sm transition-transform group-hover:scale-105",
+                      t.accent
+                    )}
+                  >
                     <Icon className="h-4 w-4" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{t.label}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="truncate text-sm font-medium">{t.label}</p>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                        #{idx + 1}
+                      </span>
+                    </div>
                     <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{t.desc}</p>
+                    <p className="mt-1 truncate text-[10px] font-medium text-primary/70">{t.hint}</p>
                   </div>
-                </button>
+                </motion.button>
               );
             })}
           </div>
@@ -269,41 +299,14 @@ export function YoutubeView() {
               )}
             </div>
 
-            {generateM.isPending ? (
-              <div className="mt-5 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
-            ) : result ? (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-5 rounded-xl border bg-muted/30 p-4 sm:p-5"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Result</p>
-                  <Badge variant="outline" className="gap-1 text-[11px]">
-                    <FileText className="h-3 w-3" /> Markdown
-                  </Badge>
-                </div>
-                <div className="max-h-[60vh] overflow-y-auto scroll-thin pr-2">
-                  <Markdown content={result} />
-                </div>
-              </motion.div>
-            ) : (
-              <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-dashed p-10 text-center">
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <p className="text-sm font-medium">Fill in the inputs and generate</p>
-                <p className="max-w-sm text-xs text-muted-foreground">
-                  Pro tip: combine the title generator with a script for a complete video package.
-                </p>
-              </div>
-            )}
+            <GeneratorResultPanel
+              module="youtube"
+              isLoading={generateM.isPending}
+              result={result}
+              toolLabel={tool.label}
+              inputLabel={topic || "(untitled)"}
+              onClear={() => setResult("")}
+            />
           </Card>
         </div>
       </div>

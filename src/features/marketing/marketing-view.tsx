@@ -14,18 +14,17 @@ import {
   Layout,
   Copy,
   Loader2,
-  FileText,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Markdown } from "@/components/markdown";
+import { GeneratorResultPanel } from "@/components/generator-result-panel";
+import { useGeneratorHistory } from "@/hooks/use-generator-history";
 
 interface BrandVoice {
   id: string;
@@ -40,6 +39,7 @@ const TOOLS = [
     desc: "3 variations with primary text + headline + CTA.",
     icon: Facebook,
     accent: "from-blue-500 to-indigo-500",
+    hint: "3 variations · Primary text + headline + CTA",
   },
   {
     id: "google-ad",
@@ -47,6 +47,7 @@ const TOOLS = [
     desc: "15 headlines, 4 descriptions, sitelinks.",
     icon: Search,
     accent: "from-emerald-500 to-teal-500",
+    hint: "Responsive Search Ad assets",
   },
   {
     id: "email-sequence",
@@ -54,6 +55,7 @@ const TOOLS = [
     desc: "5-email conversion sequence with CTAs.",
     icon: Mail,
     accent: "from-rose-500 to-pink-500",
+    hint: "5 emails · welcome → pain → solution → proof → urgency",
   },
   {
     id: "funnel",
@@ -61,6 +63,7 @@ const TOOLS = [
     desc: "5-stage funnel with KPIs & assets per stage.",
     icon: GitBranch,
     accent: "from-amber-500 to-orange-500",
+    hint: "5 stages · Awareness → Retention",
   },
   {
     id: "product-desc",
@@ -68,6 +71,7 @@ const TOOLS = [
     desc: "Short, medium & long variations.",
     icon: Package,
     accent: "from-violet-500 to-fuchsia-500",
+    hint: "3 variations · 50 / 100 / 200 words",
   },
   {
     id: "landing-copy",
@@ -75,6 +79,7 @@ const TOOLS = [
     desc: "Long-form sales page with PAS framework.",
     icon: Layout,
     accent: "from-cyan-500 to-sky-500",
+    hint: "PAS framework · Hero → FAQ → CTA",
   },
 ] as const;
 
@@ -88,6 +93,7 @@ export function MarketingView() {
   const [topic, setTopic] = useState("");
   const [brandVoiceId, setBrandVoiceId] = useState<string>("");
   const [result, setResult] = useState<string>("");
+  const history = useGeneratorHistory("marketing");
 
   const { data: voices } = useQuery<BrandVoice[]>({
     queryKey: ["brand-voices"],
@@ -108,6 +114,13 @@ export function MarketingView() {
       setResult(data.result);
       qc.invalidateQueries({ queryKey: ["user"] });
       toast.success(`Generated — ${data.credits} credits left`);
+      // Persist to local history
+      history.add({
+        tool: activeTool,
+        toolLabel: tool.label,
+        input: product || topic || "(untitled)",
+        result: data.result,
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -154,29 +167,46 @@ export function MarketingView() {
             Tools
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-            {TOOLS.map((t) => {
+            {TOOLS.map((t, idx) => {
               const Icon = t.icon;
               const active = activeTool === t.id;
               return (
-                <button
+                <motion.button
                   key={t.id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.03 }}
                   onClick={() => {
                     setActiveTool(t.id);
                     setResult("");
                   }}
                   className={cn(
-                    "group flex items-start gap-3 rounded-xl border p-3 text-left transition-all hover:shadow-sm",
+                    "group relative flex items-start gap-3 overflow-hidden rounded-xl border p-3 text-left transition-all hover:shadow-sm",
                     active ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card hover:border-primary/40"
                   )}
                 >
-                  <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white", t.accent)}>
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+                  )}
+                  <div
+                    className={cn(
+                      "grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white shadow-sm transition-transform group-hover:scale-105",
+                      t.accent
+                    )}
+                  >
                     <Icon className="h-4 w-4" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{t.label}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="truncate text-sm font-medium">{t.label}</p>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                        #{idx + 1}
+                      </span>
+                    </div>
                     <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{t.desc}</p>
+                    <p className="mt-1 truncate text-[10px] font-medium text-primary/70">{t.hint}</p>
                   </div>
-                </button>
+                </motion.button>
               );
             })}
           </div>
@@ -283,41 +313,14 @@ export function MarketingView() {
               )}
             </div>
 
-            {generateM.isPending ? (
-              <div className="mt-5 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
-            ) : result ? (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-5 rounded-xl border bg-muted/30 p-4 sm:p-5"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Result</p>
-                  <Badge variant="outline" className="gap-1 text-[11px]">
-                    <FileText className="h-3 w-3" /> Markdown
-                  </Badge>
-                </div>
-                <div className="max-h-[60vh] overflow-y-auto scroll-thin pr-2">
-                  <Markdown content={result} />
-                </div>
-              </motion.div>
-            ) : (
-              <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-dashed p-10 text-center">
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <p className="text-sm font-medium">Fill in the inputs and generate</p>
-                <p className="max-w-sm text-xs text-muted-foreground">
-                  Apply your brand voice to keep copy on-message. Each generation costs credits.
-                </p>
-              </div>
-            )}
+            <GeneratorResultPanel
+              module="marketing"
+              isLoading={generateM.isPending}
+              result={result}
+              toolLabel={tool.label}
+              inputLabel={product || topic || "(untitled)"}
+              onClear={() => setResult("")}
+            />
           </Card>
         </div>
       </div>

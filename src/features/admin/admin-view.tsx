@@ -152,6 +152,7 @@ interface AdminStats {
     estimatedMrr: number;
   };
   series: { label: string; credits: number }[];
+  toolUsage?: { module: string; tool: string; count: number }[];
 }
 
 interface AdminUser {
@@ -304,6 +305,62 @@ function OverviewSection() {
             );
           })}
         </div>
+      </Card>
+
+      {/* Tool usage insights — most used SEO/Marketing/YouTube generators */}
+      <Card className="p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Generator usage</h3>
+            <p className="text-xs text-muted-foreground">Top tools · last 30 days</p>
+          </div>
+          <Badge variant="outline" className="gap-1.5">
+            <Activity className="h-3 w-3" /> {(data?.toolUsage ?? []).length} tools
+          </Badge>
+        </div>
+        {(data?.toolUsage ?? []).length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <p className="text-sm font-medium">No generator usage yet</p>
+            <p className="max-w-sm text-xs text-muted-foreground">
+              When users generate SEO, Marketing or YouTube content, the most popular tools will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {(data?.toolUsage ?? []).map((tool, i) => {
+              const max = data?.toolUsage?.[0]?.count ?? 1;
+              const pct = Math.max(2, (tool.count / max) * 100);
+              const moduleColor =
+                tool.module === "SEO" ? "from-amber-500 to-orange-500" :
+                tool.module === "Marketing" ? "from-rose-500 to-pink-500" :
+                tool.module === "YouTube" ? "from-red-500 to-rose-500" :
+                "from-primary to-teal-500";
+              return (
+                <div key={`${tool.module}-${tool.tool}`} className="group">
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="grid h-5 w-5 place-items-center rounded-md bg-muted text-[9px] font-bold text-muted-foreground">
+                        {i + 1}
+                      </span>
+                      <span className="font-medium">{tool.tool}</span>
+                      <Badge variant="outline" className="text-[10px] py-0 h-4">{tool.module}</Badge>
+                    </div>
+                    <span className="tabular-nums text-muted-foreground">{tool.count} runs</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn("h-full rounded-full bg-gradient-to-r transition-all", moduleColor)}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
     </div>
   );
