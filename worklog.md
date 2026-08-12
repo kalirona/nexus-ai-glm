@@ -1099,3 +1099,43 @@ Recommended next phase:
 3. **Settings page enhancements**: profile editing, API key management, notification preferences.
 4. **Onboarding tour**: first-time user guide highlighting the 13 modules.
 5. **Push to GitHub**: Push all new commits (0bc402c, 8df94d0, b3b774e) to the remote repo.
+
+---
+Task ID: 28 (Dashboard enhancements + command palette fix)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Continue development — enhance dashboard, fix command palette, add activity timeline.
+
+Work Log:
+- Reviewed state: 12 unpushed commits. Dev server has been DOWN for 5+ rounds — did NOT auto-restart. All work verified via `bun run lint` (0 errors).
+- **Dashboard: Recent Documents card** — new card showing last 4 documents with colour-coded kind icons (amber=seo, rose=marketing, red=youtube, emerald=business-plan, etc.). "View all" button links to Documents module. Uses existing `recent.documents` data from `/api/dashboard` that was previously unused.
+- **Dashboard: Recent Images card** — new card showing last 8 images in a responsive grid (3 cols mobile, 4 cols desktop). Each thumbnail has a hover ring + kind label overlay. Uses existing `recent.images` data.
+- **Dashboard: Activity Timeline** — new card showing last 8 audit log entries as a vertical timeline with colour-coded dots per action type:
+  - emerald = chat created / document saved
+  - amber = document / SEO generated
+  - rose = image / marketing generated
+  - red = youtube generated
+  - fuchsia = brand voice updated
+  - primary = other actions
+  Uses existing `recent.logs` data that was previously unused.
+- **Command Palette fix** — removed the "Coming soon" group (SEO/Marketing/YouTube are now fully functional). Added all 4 new modules to the Navigation group: SEO Workspace, Marketing Workspace, YouTube Workspace, Brand Voice. Added 3 new Quick Actions for the Package bulk jobs (Run SEO Package, Run Campaign Package, Run Video Package).
+- **Verification**:
+  - `bun run lint` — 0 errors ✓ after each change
+  - **Browser verification NOT possible** — dev server down throughout
+
+Stage Summary:
+- Dashboard now shows 4 sections of recent activity: conversations, documents, images, and an activity timeline
+- All data was already being fetched by the API — just wasn't being displayed
+- Command palette is now accurate (no more "Coming soon" for functional modules)
+- 3 new commits: `1eb970b` (dashboard + command palette), `a9e1cff` (activity timeline)
+
+Unresolved issues / risks:
+- **Dev server has been down for 5+ rounds** (Tasks 24-28). The system is supposed to auto-restart but hasn't. All code is verified via lint only. **BLOCKING**: browser testing is still needed.
+- **12+ unpushed commits** — the previous GitHub PAT has expired. User needs to provide a new PAT to push.
+- The Clerk keyless-mode Server Actions 500 errors persist (preview-proxy CSRF check).
+
+Recommended next phase:
+1. **Browser verification** (BLOCKING): Once dev server is back, test all features end-to-end.
+2. **Push to GitHub**: User needs to provide a new PAT — there are 14+ unpushed commits.
+3. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook.
+4. **Settings page enhancements**: editable profile, notification preferences persistence.
+5. **Onboarding tour**: first-time user guide highlighting all 13 modules.
