@@ -815,3 +815,22 @@ Stage Summary:
 - In clerk mode, the app will fail closed (401) without real Clerk keys.
 - Webhook is functional with Svix verification (tested in demo mode without secret).
 - Manual setup guide at CLERK-SETUP.md walks through the exact steps to connect a real Clerk application.
+
+---
+Task ID: GIT-PUSH
+Agent: main
+Task: Push NexusAI repository to GitHub (https://github.com/kalirona/nexus-ai-glm.git) using user-provided PAT
+
+Work Log:
+- Checked git status: working tree clean, 3 new commits ready (5c18b11, 06b6585, 617e6ca)
+- Previous remote URL contained an expired PAT — updated with new PAT provided by user
+- Ran `git push -u origin main` — succeeded, new branch main -> main created
+- Removed PAT from git config (security: `git remote set-url origin https://github.com/kalirona/nexus-ai-glm.git`) so token is not stored in plain config
+- Verified remote: `git log origin/main` confirms 24 commits, 192 files all pushed
+
+Stage Summary:
+- Repository is now live at https://github.com/kalirona/nexus-ai-glm.git (public/private per user's repo setting)
+- 24 commits include: Clerk auth (Phase 1.0), Docker deployment files, .env cleanup + .env.example
+- PAT was scrubbed from local git config after push — repo URL is now token-free
+- Next: deploy on Dokploy with Docker (use docker-compose.demo.yml for quick test without Clerk, or docker-compose.yml with real Clerk env vars)
+- Follow CLERK-SETUP.md guide to create Clerk application, configure webhook, and test login flow
