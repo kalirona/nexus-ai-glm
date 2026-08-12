@@ -1036,3 +1036,66 @@ Recommended next phase:
 2. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook signature, test with 2 real users.
 3. **Marketing Package + YouTube Package**: Extend the bulk-job pattern to Marketing (e.g. "Campaign Package": FB ads + email sequence + landing page) and YouTube (e.g. "Video Package": titles + script + description).
 4. **History search**: Add a search/filter input in the history sidebar to find past generations by keyword.
+
+---
+Task ID: 26 (Marketing/YouTube Packages + history search) — already committed as b3b774e
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Implement Marketing Package, YouTube Package bulk jobs, and history search.
+
+Work Log:
+- **Marketing Package (Campaign Kit)**: `POST /api/marketing/package` runs FB Ads → Email Sequence → Landing Page in sequence. 3x credits, auto-saves combined Document (kind: "marketing", tags: "Campaign Package"). Marketing view: package tool as first option with Layers icon, fuchsia styling, "3x" badge, info banner, gradient generate button.
+- **YouTube Package (Video Kit)**: `POST /api/youtube/package` runs Titles → Script → SEO Description. 3x credits, auto-saves combined Document (kind: "youtube", tags: "Video Package"). YouTube view: same package styling pattern.
+- **History search**: GeneratorResultPanel now has a search input in the history sidebar that filters entries by toolLabel or input text. Clear button + "No matches" empty state.
+- All 3 packages persist 3 individual history entries so each result is accessible individually.
+- Committed as `b3b774e` (5 files, 732 insertions).
+
+---
+Task ID: 27 (Document + Image search, filter, duplicate, word count)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Continue development — add search/filter/duplicate to Documents and Images views.
+
+Work Log:
+- Reviewed state: Task 26 was already committed (b3b774e). Dev server has been DOWN for 4+ rounds — did NOT auto-restart. All work verified via `bun run lint` (0 errors).
+
+- **Documents view enhancements** (`src/features/documents/documents-view.tsx`):
+  - **Search**: filter by title or tags with clear button. Search bar with Search icon, appears above the documents grid.
+  - **Kind filter chips**: "All (N)" + one chip per kind present in the user's docs (seo, marketing, youtube, business-plan, etc.) with count. Active chip is colour-coded (amber=seo, rose=marketing, red=youtube). Only shows when >1 kind exists.
+  - **Duplicate**: clone any document with "(copy)" suffix via POST /api/documents. Duplicate button appears in gallery card hover (CopyDoc icon) AND in the editor toolbar. Uses the existing documents API with kind+tags preserved.
+  - **Word count**: live word count in the editor toolbar (updates as user types). Hidden on mobile.
+  - **Empty states**: "No documents match" with Clear filters button when search yields no results. "X of Y" count shown when filtered.
+  - Committed as `0bc402c`.
+
+- **Images view enhancements** (`src/features/images/images-view.tsx`):
+  - **Search**: filter by prompt with clear button. Same pattern as Documents.
+  - **Kind filter chips**: "All (N)" + one chip per kind (graphic, logo, ad, social, thumbnail, hero) with count.
+  - **Empty states**: "No images match" with Clear filters button. "X of Y" count in the gallery badge.
+  - Committed as `8df94d0`.
+
+- **Verification**:
+  - `bun run lint` — 0 errors ✓ (after each change)
+  - **Browser verification NOT possible** — dev server down throughout
+
+Stage Summary:
+- **Documents**: search by title/tags, filter by kind, duplicate any doc, live word count in editor
+- **Images**: search by prompt, filter by kind, consistent search/filter pattern
+- **All 3 generator workspaces** (SEO, Marketing, YouTube) now have: Package bulk job, DB-backed history with search, Save-to-Documents, brand voice injection
+- **Consistent UX**: search bar + filter chips pattern is now used across Documents, Images, and generator history sidebars
+- Lint clean, no TypeScript errors in modified files
+
+Unresolved issues / risks:
+- **Dev server has been down for 4+ rounds** (Tasks 24, 25, 26, 27). The system is supposed to auto-restart `bun run dev` but it hasn't. All code is verified via lint + tsc but NOT browser-tested. **BLOCKING**: the next round with a working dev server MUST verify:
+  1. Save-to-Documents flow (generate → save → check Documents module)
+  2. DB-backed history (generate → check history sidebar → refresh → persists)
+  3. All 3 Packages (SEO, Marketing, YouTube) — run + check combined result + check Documents
+  4. Admin usage insights (generate → check Super Admin overview)
+  5. Document search/filter/duplicate
+  6. Image search/filter
+  7. History search in generator sidebar
+- The Clerk keyless-mode Server Actions 500 errors persist (preview-proxy CSRF check). Will resolve in production with real Clerk keys.
+
+Recommended next phase:
+1. **Browser verification** (BLOCKING): Once dev server is back, test all 7 flows above end-to-end via agent-browser.
+2. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook, test with 2 real users.
+3. **Settings page enhancements**: profile editing, API key management, notification preferences.
+4. **Onboarding tour**: first-time user guide highlighting the 13 modules.
+5. **Push to GitHub**: Push all new commits (0bc402c, 8df94d0, b3b774e) to the remote repo.
