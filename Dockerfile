@@ -52,8 +52,6 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # Copy prisma CLI so we can run `npx prisma db push` at startup
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-# Copy the prisma query engine binary
-COPY --from=builder /app/node_modules/@prisma-engines ./node_modules/@prisma-engines
 
 # Create data directory for SQLite + set ownership to node user
 RUN mkdir -p /app/data && chown -R node:node /app
