@@ -1,16 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { api } from "@/lib/api-client";
 
 /**
- * Persists a list of recent items per module (e.g. SEO, Marketing, YouTube)
- * in localStorage. Each item stores the tool id, a short label, the result,
- * and a timestamp. We cap the list at `max` entries (default 10).
- *
- * NOTE: We deliberately avoid useEffect+setState (which the React 19 lint rule
- * flags as a cascading render). Instead we lazily initialise state from
- * localStorage in the useState initializer — this runs once on the client
- * during hydration and never again.
+ * Persists recent generator outputs (SEO / Marketing / YouTube) to the DB
+ * so they follow the user across devices. Falls back to localStorage if the
+ * API is unreachable. Capped at 10 entries per module.
  */
 
 export interface HistoryEntry {
@@ -24,7 +20,7 @@ export interface HistoryEntry {
 
 const PREFIX = "nexus-history:";
 
-function loadEntries(key: string): HistoryEntry[] {
+function loadLocal(key: string): HistoryEntry[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(key);
@@ -38,62 +34,92 @@ function loadEntries(key: string): HistoryEntry[] {
   return [];
 }
 
+function saveLocal(key: string, list: HistoryEntry[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch {
+    /* storage might be full / unavailable */
+  }
+}
+
 export function useGeneratorHistory(module: string, max = 10) {
   const key = `${PREFIX}${module}`;
-  // Lazy init — runs once on client, no effect needed.
-  const [entries, setEntries] = useState<HistoryEntry[]>(() => loadEntries(key));
+  // Lazy init from localStorage so the UI renders instantly on mount.
+  // The DB fetch happens in the consuming component via useQuery.
+  const [entries, setEntries] = useState<HistoryEntry[]>(() => loadLocal(key));
 
-  const persist = useCallback(
-    (list: HistoryEntry[]) => {
-      setEntries(list);
-      try {
-        localStorage.setItem(key, JSON.stringify(list));
-      } catch {
-        /* storage might be full / unavailable */
-      }
-    },
-    [key]
-  );
+  /** Replace local state (called after a successful DB fetch). */
+  const hydrate = useCallback((dbEntries: HistoryEntry[]) => {
+    setEntries(dbEntries);
+    saveLocal(key, dbEntries);
+  }, [key]);
 
   const add = useCallback(
-    (entry: Omit<HistoryEntry, "id" | "createdAt">) => {
+    async (entry: Omit<HistoryEntry, "id" | "createdAt">) => {
       const full: HistoryEntry = {
         ...entry,
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         createdAt: Date.now(),
       };
+      // Optimistic update
       setEntries((prev) => {
         const next = [full, ...prev].slice(0, max);
-        try {
-          localStorage.setItem(key, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
+        saveLocal(key, next);
         return next;
       });
-      return full;
+      // Persist to DB (best-effort — silent failure keeps the local entry)
+      try {
+        const dbEntry = await api<HistoryEntry>("/api/history", {
+          method: "POST",
+          body: JSON.stringify({
+            module,
+            tool: entry.tool,
+            toolLabel: entry.toolLabel,
+            input: entry.input,
+            result: entry.result,
+          }),
+        });
+        // Replace the optimistic id with the real DB id + createdAt
+        if (dbEntry?.id) {
+          setEntries((prev) => {
+            const next = prev.map((e) =>
+              e.id === full.id
+                ? { ...e, id: dbEntry.id, createdAt: new Date(dbEntry.createdAt).getTime() || e.createdAt }
+                : e
+            );
+            saveLocal(key, next);
+            return next;
+          });
+        }
+        return dbEntry;
+      } catch {
+        return full;
+      }
     },
-    [key, max]
+    [key, max, module]
   );
 
   const remove = useCallback(
-    (id: string) => {
+    async (id: string) => {
       setEntries((prev) => {
         const next = prev.filter((e) => e.id !== id);
-        try {
-          localStorage.setItem(key, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
+        saveLocal(key, next);
         return next;
       });
+      // Best-effort DB delete (id may be a temporary local id)
+      try {
+        await api(`/api/history/${id}`, { method: "DELETE" });
+      } catch {
+        /* ignore — might be a local-only id */
+      }
     },
     [key]
   );
 
   const clear = useCallback(() => {
-    persist([]);
-  }, [persist]);
+    setEntries([]);
+    saveLocal(key, []);
+  }, [key]);
 
-  return { entries, add, remove, clear };
+  return { entries, hydrate, add, remove, clear };
 }

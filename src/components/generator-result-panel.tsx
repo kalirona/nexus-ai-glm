@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import {
   Copy,
@@ -15,6 +15,7 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +40,8 @@ interface Props {
 /**
  * Shared result panel used by SEO, Marketing and YouTube workspaces.
  * Renders the generated markdown, with Copy + Save-to-Documents buttons
- * and a collapsible "Recent generations" history sidebar.
+ * and a collapsible "Recent generations" history sidebar that syncs with
+ * the DB (so history follows the user across devices).
  */
 export function GeneratorResultPanel({
   module,
@@ -54,6 +56,33 @@ export function GeneratorResultPanel({
   const [showHistory, setShowHistory] = useState(false);
   const [activeHistoryEntry, setActiveHistoryEntry] = useState<HistoryEntry | null>(null);
   const history = useGeneratorHistory(module);
+
+  // Hydrate history from DB on mount + when refetched.
+  // The DB is the source of truth; localStorage is just an optimistic cache.
+  const { data: dbHistory, refetch } = useQuery<HistoryEntry[]>({
+    queryKey: ["generator-history", module],
+    queryFn: async () => {
+      const raw = await api<Array<{ id: string; tool: string; toolLabel: string; input: string; result: string; createdAt: string }>>(
+        `/api/history?module=${module}`
+      );
+      return raw.map((r) => ({
+        id: r.id,
+        tool: r.tool,
+        toolLabel: r.toolLabel,
+        input: r.input,
+        result: r.result,
+        createdAt: new Date(r.createdAt).getTime(),
+      }));
+    },
+    staleTime: 30_000,
+  });
+
+  // Sync DB → local state whenever DB data changes
+  if (dbHistory && dbHistory.length !== history.entries.length) {
+    history.hydrate(dbHistory);
+  } else if (dbHistory && dbHistory[0]?.id !== history.entries[0]?.id) {
+    history.hydrate(dbHistory);
+  }
 
   const copy = () => {
     navigator.clipboard.writeText(result);
@@ -193,6 +222,20 @@ export function GeneratorResultPanel({
           animate={{ opacity: 1, height: "auto" }}
           className="mb-3 overflow-hidden rounded-lg border bg-background"
         >
+          <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-1.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              Synced to cloud
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-2 text-[11px] text-muted-foreground"
+              onClick={() => refetch()}
+            >
+              <RefreshCw className="h-3 w-3" /> Refresh
+            </Button>
+          </div>
           {history.entries.length === 0 ? (
             <p className="p-3 text-center text-xs text-muted-foreground">
               No history yet — generate something to see it here.

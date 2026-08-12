@@ -35,6 +35,7 @@ model User {
   transactions    CreditTransaction[]
   auditLogs       AuditLog[]
   apiKeys         ApiKey[]
+  history         GeneratorHistory[]
 }
 
 model Folder {
@@ -216,6 +217,24 @@ model BrandVoice {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Persists recent generator outputs (SEO / Marketing / YouTube) so users can
+/// revisit them across devices/sessions. Capped client-side at ~10 per module.
+model GeneratorHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  module       String   // seo | marketing | youtube
+  tool         String   // tool id (e.g. "keywords", "fb-ad", "titles")
+  toolLabel    String   // human-readable tool name
+  input        String   // short summary of the input that produced this
+  result       String   // the full markdown result
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, module, createdAt])
+  @@index([userId, createdAt])
 }
 
 /// Platform-wide key-value settings managed by super admins.

@@ -102,8 +102,9 @@ export function YoutubeView() {
     onSuccess: (data) => {
       setResult(data.result);
       qc.invalidateQueries({ queryKey: ["user"] });
+      qc.invalidateQueries({ queryKey: ["generator-history", "youtube"] });
       toast.success(`Generated — ${data.credits} credits left`);
-      // Persist to local history
+      // Persist to DB-backed history (syncs across devices)
       history.add({
         tool: activeTool,
         toolLabel: tool.label,
