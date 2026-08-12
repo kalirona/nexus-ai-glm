@@ -1197,3 +1197,55 @@ Recommended next phase:
 3. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook.
 4. **Notification preferences persistence**: Currently the PrefRow switches are visual-only — wire them to a user.preferences JSON field.
 5. **API key management**: The API Keys tab exists but could use real key generation + usage tracking.
+
+---
+Task ID: 30 (Real API key management)
+Agent: lead-architect (main) — auto-triggered by 15-min cron
+Task: Implement real API key management with generation, hashing, and tracking.
+
+Work Log:
+- Reviewed state: 18 unpushed commits. Dev server has been DOWN for 7+ rounds — did NOT auto-restart. All work verified via `bun run lint` (0 errors).
+
+- **New: API key management API** (`src/app/api/user/api-keys/`):
+  - `GET /api/user/api-keys` — list active keys (without the hashed key), newest first
+  - `POST /api/user/api-keys` — create a new key:
+    - Generates `nexus_<48 hex chars>` format using crypto.getRandomValues
+    - Hashes the plain key with SHA-256 (Web Crypto API) before storage
+    - Stores only the hash + a display prefix (`nexus_<first8>…`)
+    - Returns the plain key ONCE in the response — never retrievable again
+    - Logs audit entry (`api-key.create`)
+  - `DELETE /api/user/api-keys/[id]` — soft-delete (sets `revokedAt` timestamp):
+    - Verifies ownership before revoking
+    - Logs audit entry (`api-key.revoke`)
+
+- **Enhanced: Settings ApiKeysTab** (`src/features/settings/settings-view.tsx`):
+  - Replaced fake "Create key" button with real API calls
+  - Create form: name input + Generate button (with loading state)
+  - New key card: emerald-highlighted with Check icon, mono-font key display, Copy button, "I've copied my key" dismiss button
+  - Key list: each row shows Key icon, name, prefix (mono), created date, last-used date, revoke button (trash icon)
+  - Empty state: Key icon + "No API keys yet" + "Create one to start building"
+  - Pro/Agency plan gate preserved (paywall still triggers for free/starter)
+  - Invalidates `api-keys` query on create/revoke so list refreshes instantly
+
+- **Verification**:
+  - `bun run lint` — 0 errors ✓ (after adding missing `Copy` import)
+  - **Browser verification NOT possible** — dev server down throughout
+
+Stage Summary:
+- **API key management is now real** — keys are generated, SHA-256 hashed, stored securely, and shown once on creation
+- **Full CRUD UI** — create, list, copy, revoke with proper empty/loading states
+- **Security**: plain key never stored — only SHA-256 hash. Prefix allows identification without exposure.
+- Lint clean
+
+Unresolved issues / risks:
+- **Dev server has been down for 7+ rounds** (Tasks 24-30). The system is supposed to auto-restart but hasn't. All code is verified via lint only. **BLOCKING**: browser testing is still needed.
+- **20 unpushed commits** — the previous GitHub PAT has expired. User needs to provide a new PAT to push.
+- API keys are created but not yet authenticated against — there's no middleware that checks `Authorization: Bearer nexus_…` headers. A future phase should add API key auth to public API routes.
+- The Clerk keyless-mode Server Actions 500 errors persist (preview-proxy CSRF check).
+
+Recommended next phase:
+1. **Browser verification** (BLOCKING): Once dev server is back, test API key creation/copy/revoke, profile editing, onboarding tour, and all features from Tasks 24-30.
+2. **Push to GitHub**: User needs to provide a new PAT — 20+ unpushed commits.
+3. **API key authentication**: Add middleware to validate `Authorization: Bearer nexus_…` headers on public API routes (for programmatic access).
+4. **Notification preferences persistence**: Wire the PrefRow switches to a user.preferences JSON field.
+5. **CLERK-SETUP**: Connect real Clerk application, set AUTH_MODE=clerk, verify webhook.
