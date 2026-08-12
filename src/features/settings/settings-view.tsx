@@ -13,6 +13,7 @@ import {
   Plus,
   Trash2,
   Check,
+  Copy,
   Star,
   Loader2,
   Sparkles,
@@ -586,8 +587,52 @@ function BrandVoiceEditor({ voice, onClose }: { voice: BrandVoice | null; onClos
 
 // ---------------------------------------------------------------------------
 function ApiKeysTab({ plan }: { plan: string }) {
+  const qc = useQueryClient();
   const { openPaywall } = useWorkspace();
   const allowed = plan === "pro" || plan === "agency";
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const { data: keys = [] } = useQuery<{ id: string; name: string; prefix: string; lastUsedAt: string | null; createdAt: string }[]>({
+    queryKey: ["api-keys"],
+    queryFn: () => api("/api/user/api-keys"),
+    enabled: allowed,
+  });
+
+  const createKey = useMutation({
+    mutationFn: (name: string) =>
+      api<{ id: string; key: string }>("/api/user/api-keys", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: (data) => {
+      setCreatedKey(data.key);
+      setShowCreate(false);
+      setNewName("");
+      qc.invalidateQueries({ queryKey: ["api-keys"] });
+      toast.success("API key created — copy it now, you won't see it again");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revokeKey = useMutation({
+    mutationFn: (id: string) => api(`/api/user/api-keys/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["api-keys"] });
+      toast.success("API key revoked");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const copyKey = () => {
+    if (!createdKey) return;
+    navigator.clipboard.writeText(createdKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("Copied to clipboard");
+  };
 
   if (!allowed) {
     return (
@@ -614,16 +659,128 @@ function ApiKeysTab({ plan }: { plan: string }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-sm font-semibold sm:text-base">API Keys</h3>
-            <p className="text-sm text-muted-foreground">Programmatic access to NexusAI.</p>
+            <p className="text-sm text-muted-foreground">Programmatic access to NexusAI. Keys are shown once — copy immediately.</p>
           </div>
-          <Button className="gap-2 shrink-0" size="sm" onClick={() => toast.success("API key created (demo)")}>
+          <Button className="gap-2 shrink-0" size="sm" onClick={() => setShowCreate(true)} disabled={showCreate}>
             <Plus className="h-4 w-4" /> Create key
           </Button>
         </div>
+
+        {/* Create form */}
+        {showCreate && (
+          <div className="mt-4 space-y-2 rounded-lg border bg-muted/30 p-3">
+            <Label htmlFor="api-key-name" className="text-xs text-muted-foreground">Key name</Label>
+            <Input
+              id="api-key-name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Production webhook"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowCreate(false);
+                  setNewName("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => createKey.mutate(newName)}
+                disabled={!newName.trim() || createKey.isPending}
+              >
+                {createKey.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
+                Generate
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
-      <Card className="p-5">
-        <p className="text-sm text-muted-foreground">No API keys yet. Create one to start building.</p>
-      </Card>
+
+      {/* Newly created key — shown once */}
+      {createdKey && (
+        <Card className="border-emerald-500/40 bg-emerald-500/5 p-4 sm:p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500/15 text-emerald-500">
+              <Check className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Key created</p>
+              <p className="text-xs text-muted-foreground">Copy this key now — you won't see it again.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border bg-background p-2.5">
+            <code className="flex-1 truncate font-mono text-xs text-emerald-600 dark:text-emerald-400">{createdKey}</code>
+            <Button size="sm" variant="outline" onClick={copyKey} className="h-7 shrink-0 gap-1.5">
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-3 w-full"
+            onClick={() => {
+              setCreatedKey(null);
+              setCopied(false);
+            }}
+          >
+            I've copied my key
+          </Button>
+        </Card>
+      )}
+
+      {/* Key list */}
+      {keys.length === 0 && !createdKey ? (
+        <Card className="p-5">
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-muted">
+              <Key className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium">No API keys yet</p>
+            <p className="max-w-xs text-xs text-muted-foreground">Create one to start building integrations.</p>
+          </div>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden p-0">
+          <div className="divide-y">
+            {keys.map((k) => (
+              <div key={k.id} className="group flex items-center gap-3 p-3 transition-colors hover:bg-muted/30">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <Key className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{k.name}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <code className="font-mono">{k.prefix}</code>
+                    <span>·</span>
+                    <span>Created {new Date(k.createdAt).toLocaleDateString()}</span>
+                    {k.lastUsedAt && (
+                      <>
+                        <span>·</span>
+                        <span>Last used {new Date(k.lastUsedAt).toLocaleDateString()}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => revokeKey.mutate(k.id)}
+                  aria-label="Revoke key"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
