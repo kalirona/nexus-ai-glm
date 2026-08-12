@@ -1,41 +1,33 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 /**
- * Clerk middleware — protects routes based on AUTH_MODE.
- *
- * AUTH_MODE=demo (default in development):
- *   All routes pass through. getCurrentUser() handles the demo user fallback.
- *   This is necessary because keyless Clerk cannot enforce auth.protect().
- *
- * AUTH_MODE=clerk (production):
- *   All non-public routes require a valid Clerk session.
- *   Unauthenticated users are redirected to Clerk's login page.
- *
- * Public routes (always accessible, no session required):
- *   - /api/auth/webhook  (authenticates via Svix signature, not Clerk session)
- *   - /api                (health check)
+ * Simple middleware — demo mode passes through.
+ * Clerk middleware is only loaded when NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is set.
  */
 
-const AUTH_MODE = process.env.AUTH_MODE || (process.env.NODE_ENV === "production" ? "clerk" : "demo");
+const CLERK_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-const isPublicRoute = createRouteMatcher([
-  "/api/auth/webhook",
-  "/api",
-]);
-
-export default clerkMiddleware(async (auth, req) => {
-  if (isPublicRoute(req)) {
-    return;
+export default async function middleware(req: Request) {
+  if (!CLERK_KEY) {
+    // Demo mode — pass through
+    return NextResponse.next();
   }
 
-  // In demo mode, pass all routes through — getCurrentUser() handles fallback
-  if (AUTH_MODE === "demo") {
-    return;
-  }
+  // Clerk mode — dynamically import and use clerkMiddleware
+  const { clerkMiddleware, createRouteMatcher } = await import("@clerk/nextjs/server");
 
-  // In clerk mode, require authentication on all non-public routes
-  await auth.protect();
-});
+  const isPublicRoute = createRouteMatcher([
+    "/api/auth/webhook",
+    "/api",
+  ]);
+
+  const handler = clerkMiddleware(async (auth: any, req: any) => {
+    if (isPublicRoute(req)) return;
+    await auth.protect();
+  });
+
+  return handler(req as any, undefined as any);
+}
 
 export const config = {
   matcher: [

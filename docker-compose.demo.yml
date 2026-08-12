@@ -1,0 +1,17 @@
+services:
+  nexusai:
+    build: .
+    container_name: nexusai
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - nexus-db:/app/data
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/nexus.db
+      - HOSTNAME=0.0.0.0
+      - AUTH_MODE=demo
+
+volumes:
+  nexus-db:

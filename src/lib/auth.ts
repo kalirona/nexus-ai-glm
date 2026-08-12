@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import { currentUser } from "@clerk/nextjs/server";
 
 /**
  * Identity layer — Clerk integration with explicit demo mode.
@@ -22,9 +21,27 @@ import { currentUser } from "@clerk/nextjs/server";
 
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.NODE_ENV === "production" ? "clerk" : "demo");
 
+// Lazy-load Clerk only when needed (avoids crash when Clerk keys are missing)
+async function getClerkUser(): Promise<{ id: string; email: string; name: string; imageUrl: string | null } | null> {
+  try {
+    const { currentUser } = await import("@clerk/nextjs/server");
+    const clerkUser = await currentUser();
+    if (!clerkUser) return null;
+    return {
+      id: clerkUser.id,
+      email: clerkUser.emailAddresses?.[0]?.emailAddress || "",
+      name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || "",
+      imageUrl: clerkUser.imageUrl || null,
+    };
+  } catch {
+    // Clerk not configured or not in middleware context — return null
+    return null;
+  }
+}
+
 export async function getCurrentUser() {
-  // Try to get the Clerk session user
-  const clerkUser = await currentUser();
+  // Try to get the Clerk session user (lazy import — won't crash if Clerk not configured)
+  const clerkUser = await getClerkUser();
 
   if (!clerkUser) {
     if (AUTH_MODE === "demo") {
@@ -39,11 +56,8 @@ export async function getCurrentUser() {
   }
 
   const clerkId = clerkUser.id;
-  const email = clerkUser.emailAddresses?.[0]?.emailAddress;
-  const name =
-    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
-    email?.split("@")[0] ||
-    "User";
+  const email = clerkUser.email;
+  const name = clerkUser.name || email.split("@")[0] || "User";
 
   // 1. Look up by clerkId (primary identity)
   let user = await db.user.findUnique({ where: { clerkId } });

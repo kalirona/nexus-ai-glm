@@ -1,0 +1,32 @@
+services:
+  nexusai:
+    build: .
+    container_name: nexusai
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist SQLite database
+      - nexus-db:/app/data
+    environment:
+      # ─── Core ───
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/nexus.db
+      - HOSTNAME=0.0.0.0
+
+      # ─── Auth Mode ───
+      # Set to "clerk" when Clerk keys are configured
+      # Set to "demo" for testing without auth
+      - AUTH_MODE=${AUTH_MODE:-demo}
+
+      # ─── Clerk (set these in Dokploy env or .env) ───
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
+      - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET:-}
+
+      # ─── Encryption ───
+      # Generate with: openssl rand -hex 32
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+
+volumes:
+  nexus-db:
