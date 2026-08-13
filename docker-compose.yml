@@ -5,29 +5,29 @@ services:
     restart: unless-stopped
     ports:
       - "3011:3011"
-    volumes:
-      # Persist SQLite database
-      - nexus-db:/app/data
     environment:
       # ─── Core ───
       - NODE_ENV=production
-      - DATABASE_URL=file:/app/data/nexus.db
+      - DATABASE_URL=${DATABASE_URL}
       - HOSTNAME=0.0.0.0
       - PORT=3011
 
       # ─── Auth Mode ───
-      # Set to "clerk" when Clerk keys are configured
+      # Set to "logto" for production (requires Logto credentials)
       # Set to "demo" for testing without auth
       - AUTH_MODE=${AUTH_MODE:-demo}
 
-      # ─── Clerk (set these in Dokploy env or .env) ───
-      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
-      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
-      - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET:-}
+      # ─── Logto Authentication ───
+      - LOGTO_ENDPOINT=${LOGTO_ENDPOINT:-}
+      - LOGTO_APP_ID=${LOGTO_APP_ID:-}
+      - LOGTO_APP_SECRET=${LOGTO_APP_SECRET:-}
+      - LOGTO_BASE_URL=${LOGTO_BASE_URL:-}
+      - LOGTO_COOKIE_SECRET=${LOGTO_COOKIE_SECRET:-}
 
       # ─── Encryption ───
       # Generate with: openssl rand -hex 32
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
 
-volumes:
-  nexus-db:
+      # ─── Directus (optional — Phase 1.2 POC only) ───
+      - DIRECTUS_URL=${DIRECTUS_URL:-}
+      - DIRECTUS_SERVICE_TOKEN=${DIRECTUS_SERVICE_TOKEN:-}

@@ -1,12 +1,13 @@
 // NexusAI — AI Business Operating System
-// Production-grade schema. SQLite-compatible (no enums / arrays; use strings + JSON).
+// Production-grade schema for PostgreSQL.
+// Migrated from SQLite (Phase 1.5) — all models preserved, no breaking changes.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -23,7 +24,7 @@ model User {
   role            String   @default("owner") // owner | admin | member
   isAdmin         Boolean  @default(false) // platform super admin
   status          String   @default("active") // active | suspended | banned
-  clerkId         String?  @unique // Legacy Clerk ID — will be migrated to logtoId
+  clerkId         String?  @unique // Legacy Clerk ID — kept for migration compat
   logtoId         String?  @unique // Logto user ID for auth
   preferences     String?  // JSON-encoded notification preferences
   createdAt       DateTime @default(now())
@@ -54,6 +55,8 @@ model Folder {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   chats     Chat[]
   documents Document[]
+
+  @@index([userId])
 }
 
 model Chat {
@@ -95,7 +98,7 @@ model Document {
   folderId  String?
   title     String
   content   String
-  kind      String   @default("generic") // generic | business-plan | contract | email | blog | sales-copy | report
+  kind      String   @default("generic") // generic | business-plan | contract | email | blog | sales-copy | report | seo | marketing | youtube
   tags      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -137,7 +140,7 @@ model CreditTransaction {
   id        String   @id @default(cuid())
   userId    String
   amount    Int // negative = spend, positive = grant
-  reason    String // chat | image | document | grant | refill
+  reason    String // chat | image | document | grant | refill | admin-adjust | seo-package | marketing-package | youtube-package
   refId     String?
   createdAt DateTime @default(now())
 
@@ -287,6 +290,7 @@ model PromptConfig {
   @@index([aiType, isActive])
   @@index([aiType, version])
 }
+
 /// Layer 1: Provider Catalog — every model returned by the provider (verificationStatus = "unverified")
 /// Layer 2: Verified — credentials confirmed usable (verificationStatus = "verified")
 /// Layer 3: Approved — admin-approved for user visibility (approved = true)

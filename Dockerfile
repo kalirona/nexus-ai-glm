@@ -53,7 +53,7 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # Copy prisma CLI so we can run `npx prisma db push` at startup
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
-# Create data directory for SQLite + set ownership to node user
+# Create data directory (for any local file storage) + set ownership to node user
 RUN mkdir -p /app/data && chown -R node:node /app
 
 # Expose port (3011 to avoid conflicts with other apps on 3000)
@@ -71,7 +71,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 USER node
 
 # Use tini as PID 1, then run:
-# 1. npx prisma db push (sync schema — best effort, won't block startup if it fails)
+# 1. npx prisma migrate deploy (apply pending migrations — safe, non-destructive)
 # 2. node server.js (Next.js standalone server)
 ENTRYPOINT ["tini", "--"]
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss 2>&1 || echo 'WARN: prisma db push failed, continuing...'; exec node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy 2>&1 || echo 'WARN: prisma migrate deploy failed, continuing...'; exec node server.js"]
