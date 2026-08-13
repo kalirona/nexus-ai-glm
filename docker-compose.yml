@@ -27,7 +27,3 @@ services:
       # ─── Encryption ───
       # Generate with: openssl rand -hex 32
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-
-      # ─── Directus (optional — Phase 1.2 POC only) ───
-      - DIRECTUS_URL=${DIRECTUS_URL:-}
-      - DIRECTUS_SERVICE_TOKEN=${DIRECTUS_SERVICE_TOKEN:-}

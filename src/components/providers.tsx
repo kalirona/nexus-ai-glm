@@ -7,10 +7,10 @@ import { useState, type ReactNode } from "react";
 /**
  * Providers — wraps the app with React context providers.
  *
- * ClerkProvider has been REMOVED. Logto authentication is handled
- * server-side via the Logto SDK (edge client) in API routes and middleware.
- * The browser never receives Logto credentials — all auth calls go through
- * Next.js API routes which validate the Logto session cookie server-side.
+ * Logto authentication is handled server-side via the Logto SDK (edge client)
+ * in API routes and middleware. The browser never receives Logto credentials —
+ * all auth calls go through Next.js API routes which validate the Logto session
+ * cookie server-side.
  *
  * Auth flow:
  *   Browser → /api/logto/sign-in (redirect to Logto) → callback → session cookie
