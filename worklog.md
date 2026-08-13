@@ -1451,3 +1451,36 @@ Stage Summary:
 - Fail-closed when AUTH_MODE=logto and no session
 - SQLite unchanged, Prisma unchanged, Directus NOT added
 - Real Logto authentication NOT verified (no Logto server in this env)
+
+---
+Task ID: PHASE-1.5
+Agent: main
+Task: Phase 1.5 — Migrate NexusAI from SQLite to PostgreSQL
+
+Work Log:
+- Audited current schema: 18 Prisma models, all SQLite-compatible (strings for enums, JSON as strings)
+- Counted SQLite rows: 10 users, 28 chats, 51 messages, 7 docs, 2 images, 38 transactions, 165 audit logs, 401 AI models, etc.
+- Updated prisma/schema.prisma: datasource provider changed from 'sqlite' to 'postgresql'
+- All 18 models preserved exactly — no field changes, no type changes
+- Added missing @@index([userId]) on Folder model
+- Created scripts/migrate-sqlite-to-postgres.ts: one-time data migration script
+  - Uses two PrismaClient instances (SQLite source, PostgreSQL target)
+  - Migrates in dependency order (User → Folder → Chat → Message → etc.)
+  - Uses upsert (idempotent)
+  - Prints migration report with counts
+- Updated Dockerfile: 'npx prisma db push' → 'npx prisma migrate deploy'
+- Updated package.json: replaced db:push with db:deploy, added db:migrate-data
+- Updated docker-compose.yml: removed SQLite volume, Clerk vars; added Logto vars
+- Updated .env.example: DATABASE_URL is now postgresql://, added SQLITE_DATABASE_URL
+- Removed obsolete files: docker-compose.demo.yml, docker-entrypoint.sh
+- Lint: 0 errors ✓
+- TypeScript: 0 new errors (pre-existing errors in admin/models + admin/users unchanged)
+- Real PostgreSQL migration NOT verified (no PostgreSQL in this sandbox)
+
+Stage Summary:
+- Prisma schema is now PostgreSQL-compatible
+- Data migration script is ready
+- Dockerfile uses 'prisma migrate deploy' (production-safe)
+- All business logic, auth, and API routes unchanged
+- SQLite backup preserved at db/custom.db
+- Directus NOT added to production data flow
