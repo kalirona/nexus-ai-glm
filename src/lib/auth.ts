@@ -1,96 +1,162 @@
 import { db } from "@/lib/db";
+import { getLogtoClient, isLogtoConfigured } from "@/lib/logto";
+import { cookies, headers } from "next/headers";
 
 /**
- * Identity layer — Clerk integration with explicit demo mode.
+ * Identity layer — Logto integration with explicit demo mode.
  *
  * AUTH_MODE controls behavior:
- *   - "demo" (default in dev): returns demo user when no Clerk session exists.
- *     This allows the sandbox/preview to work without Clerk credentials.
- *   - "clerk" (default in production): requires a valid Clerk session.
+ *   - "demo" (default in dev): returns demo user when no Logto session exists.
+ *     This allows the sandbox/preview to work without Logto credentials.
+ *   - "logto" (default in production): requires a valid Logto session.
  *     Missing session = 401 (fail closed). Never falls back to demo user.
  *
  * The contract (Prisma User object) is preserved — all feature code calls
  * getCurrentUser() and gets a User, regardless of auth mode.
  *
- * Security:
+ * SECURITY:
  *   - Client never supplies userId — always derived from authenticated session.
- *   - clerkId is the durable external identity (not email).
+ *   - logtoId is the durable external identity (not email).
  *   - Banned users get 403.
- *   - isAdmin cannot be self-promoted (only via webhook or admin route).
+ *   - isAdmin cannot be self-promoted (only via admin route or direct DB).
+ *
+ * LOGTO IDENTITY:
+ *   - Logto provides: sub (user ID), email, name, picture
+ *   - NexusAI stores: plan, credits, isAdmin, status, preferences (business data)
+ *   - isAdmin NEVER comes from Logto — only from the local database
+ *
+ * IMPLEMENTATION:
+ *   - Uses next/headers cookies() to read the Logto session cookie automatically
+ *   - No need to pass Request to every API route — getCurrentUser() reads cookies
+ *     from the Next.js request context
+ *   - For explicit Request access (e.g., POC routes), pass req as optional param
  */
 
-const AUTH_MODE = process.env.AUTH_MODE || (process.env.NODE_ENV === "production" ? "clerk" : "demo");
+const AUTH_MODE = process.env.AUTH_MODE || (process.env.NODE_ENV === "production" ? "logto" : "demo");
 
-// Lazy-load Clerk only when needed (avoids crash when Clerk keys are missing)
-async function getClerkUser(): Promise<{ id: string; email: string; name: string; imageUrl: string | null } | null> {
+/**
+ * Gets the Logto authenticated user from the current request context.
+ * Uses next/headers cookies() to read the session cookie automatically.
+ * Returns null if not authenticated or Logto not configured.
+ */
+async function getLogtoUser(req?: Request): Promise<{
+  id: string;
+  email: string;
+  name: string;
+  picture: string | null;
+} | null> {
+  if (!isLogtoConfigured()) return null;
+
+  const client = getLogtoClient();
+  if (!client) return null;
+
   try {
-    const { currentUser } = await import("@clerk/nextjs/server");
-    const clerkUser = await currentUser();
-    if (!clerkUser) return null;
-    return {
-      id: clerkUser.id,
-      email: clerkUser.emailAddresses?.[0]?.emailAddress || "",
-      name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || "",
-      imageUrl: clerkUser.imageUrl || null,
-    };
+    // If req is provided (explicit), use it directly
+    if (req) {
+      const { nodeClient } = await client.createNodeClientFromEdgeRequest(req);
+      const context = await nodeClient.getContext({ fetchUserInfo: true });
+      if (!context.isAuthenticated || !context.userInfo) return null;
+
+      return extractUserInfo(context.userInfo);
+    }
+
+    // Otherwise, construct a Request from next/headers cookies + headers
+    const cookieStore = await cookies();
+    const headerStore = await headers();
+
+    // Build a Request-like object with the cookies
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((c) => `${c.name}=${c.value}`)
+      .join("; ");
+
+    const url = headerStore.get("x-forwarded-url") || headerStore.get("host")
+      ? `https://${headerStore.get("host") || "localhost"}${headerStore.get("x-forwarded-path") || "/"}`
+      : "http://localhost:3000/";
+
+    const fakeRequest = new Request(url, {
+      headers: {
+        cookie: cookieHeader,
+        host: headerStore.get("host") || "localhost",
+      },
+    });
+
+    const { nodeClient } = await client.createNodeClientFromEdgeRequest(fakeRequest);
+    const context = await nodeClient.getContext({ fetchUserInfo: true });
+
+    if (!context.isAuthenticated || !context.userInfo) {
+      return null;
+    }
+
+    return extractUserInfo(context.userInfo);
   } catch {
-    // Clerk not configured or not in middleware context — return null
+    // Logto session invalid or not present
     return null;
   }
 }
 
-export async function getCurrentUser() {
-  // Try to get the Clerk session user (lazy import — won't crash if Clerk not configured)
-  const clerkUser = await getClerkUser();
+/** Extracts user info from Logto UserInfoResponse. */
+function extractUserInfo(userInfo: Record<string, unknown>) {
+  return {
+    id: String(userInfo.sub || ""),
+    email: String(userInfo.email || ""),
+    name: String(userInfo.name || userInfo.username || (userInfo.email ? String(userInfo.email).split("@")[0] : "") || "User"),
+    picture: userInfo.picture ? String(userInfo.picture) : null,
+  };
+}
 
-  if (!clerkUser) {
+export async function getCurrentUser(req?: Request) {
+  // Try to get the Logto session user
+  const logtoUser = await getLogtoUser(req);
+
+  if (!logtoUser) {
     if (AUTH_MODE === "demo") {
       // Demo mode (sandbox/preview) — return the demo user
       return getDemoUser();
     }
-    // Clerk mode — fail closed, never return demo user in production
+    // Logto mode — fail closed, never return demo user in production
     throw new Response(JSON.stringify({ error: "Authentication required" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  const clerkId = clerkUser.id;
-  const email = clerkUser.email;
-  const name = clerkUser.name || email.split("@")[0] || "User";
+  const logtoId = logtoUser.id;
+  const email = logtoUser.email;
+  const name = logtoUser.name || email.split("@")[0] || "User";
 
-  // 1. Look up by clerkId (primary identity)
-  let user = await db.user.findUnique({ where: { clerkId } });
+  // 1. Look up by logtoId (primary identity)
+  let user = await db.user.findUnique({ where: { logtoId } });
 
-  // 2. If not found by clerkId, try by email (links pre-existing users)
+  // 2. If not found by logtoId, try by email (links pre-existing users)
   if (!user && email) {
     user = await db.user.findUnique({ where: { email } });
     if (user) {
       user = await db.user.update({
         where: { id: user.id },
-        data: { clerkId },
+        data: { logtoId },
       });
     }
   }
 
-  // 3. If still not found, create from Clerk data (lazy sync)
+  // 3. If still not found, create from Logto data (lazy sync)
   if (!user) {
     try {
       user = await db.user.create({
         data: {
-          clerkId,
-          email: email || `unknown-${clerkId}@nexusai.app`,
+          logtoId,
+          email: email || `unknown-${logtoId}@nexusai.app`,
           name,
           plan: "free",
           credits: 200,
           creditsResetAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
-          avatarUrl: clerkUser.imageUrl || null,
+          avatarUrl: logtoUser.picture || null,
         },
       });
     } catch (err) {
       const e = err as { code?: string };
       if (e?.code === "P2002") {
-        user = await db.user.findUnique({ where: { clerkId } });
+        user = await db.user.findUnique({ where: { logtoId } });
       }
       if (!user) throw err;
     }
@@ -142,8 +208,8 @@ async function getDemoUser() {
 }
 
 /** Returns the current user or throws 403 if not an admin. */
-export async function requireAdmin() {
-  const user = await getCurrentUser();
+export async function requireAdmin(req?: Request) {
+  const user = await getCurrentUser(req);
   if (!user.isAdmin) {
     throw new Response(JSON.stringify({ error: "Admin access required" }), {
       status: 403,

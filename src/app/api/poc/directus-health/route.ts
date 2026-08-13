@@ -6,13 +6,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/test/directus-health
+ * GET /api/poc/directus-health
  *
  * Verifies that the Directus server is reachable from Next.js.
- * Requires authentication (Clerk) — this is NOT a public endpoint.
+ * Requires authentication (Logto) — this is NOT a public endpoint.
  *
  * Returns:
- *   { ok, configured, url, latencyMs, clerkUser, error? }
+ *   { ok, configured, url, latencyMs, authUser, error? }
  */
 export async function GET() {
   const user = await getCurrentUser();
@@ -25,9 +25,9 @@ export async function GET() {
     configured,
     url: result.url ? `${result.url}/server/ping` : "(not set)",
     latencyMs: result.latencyMs,
-    clerkUser: {
+    authUser: {
       id: user.id,
-      clerkId: user.clerkId || "(demo mode — no clerkId)",
+      logtoId: user.logtoId || "(demo mode — no logtoId)",
       name: user.name,
       email: user.email,
     },

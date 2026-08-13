@@ -1,32 +1,93 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { getLogtoClient, isLogtoConfigured } from "@/lib/logto";
 
 /**
- * Simple middleware — demo mode passes through.
- * Clerk middleware is only loaded when NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is set.
+ * Middleware — Logto-compatible authentication protection.
+ *
+ * When Logto is configured (env vars set):
+ *   - Checks for a valid Logto session cookie on every request
+ *   - Public routes pass through without authentication
+ *   - API routes without a session get 401 JSON (not a redirect)
+ *   - App routes without a session redirect to /api/logto/sign-in
+ *
+ * When Logto is NOT configured (demo/dev mode):
+ *   - All routes pass through (demo mode)
+ *   - getCurrentUser() handles the demo fallback
+ *
+ * SECURITY:
+ *   - API routes fail closed (401) — no redirect for API calls
+ *   - App routes redirect to sign-in — user-friendly
+ *   - Public routes are explicitly listed (never accidentally protected)
  */
 
-const CLERK_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const AUTH_MODE = process.env.AUTH_MODE || (process.env.NODE_ENV === "production" ? "logto" : "demo");
 
-export default async function middleware(req: Request) {
-  if (!CLERK_KEY) {
-    // Demo mode — pass through
+// Routes that don't require authentication
+const PUBLIC_ROUTES = [
+  "/api/logto/sign-in",
+  "/api/logto/sign-in-callback",
+  "/api/logto/sign-out",
+  "/api", // Health check endpoint (returns basic info, no sensitive data)
+];
+
+function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_ROUTES.some((route) => {
+    if (route === "/api") return pathname === "/api";
+    return pathname.startsWith(route);
+  });
+}
+
+export default async function middleware(req: NextRequest) {
+  // Demo mode — pass through everything
+  if (AUTH_MODE === "demo" || !isLogtoConfigured()) {
     return NextResponse.next();
   }
 
-  // Clerk mode — dynamically import and use clerkMiddleware
-  const { clerkMiddleware, createRouteMatcher } = await import("@clerk/nextjs/server");
+  const { pathname } = req.nextUrl;
 
-  const isPublicRoute = createRouteMatcher([
-    "/api/auth/webhook",
-    "/api",
-  ]);
+  // Public routes — pass through
+  if (isPublicRoute(pathname)) {
+    return NextResponse.next();
+  }
 
-  const handler = clerkMiddleware(async (auth: any, req: any) => {
-    if (isPublicRoute(req)) return;
-    await auth.protect();
-  });
+  // Check Logto session
+  const client = getLogtoClient();
+  if (!client) {
+    return NextResponse.next();
+  }
 
-  return handler(req as any, undefined as any);
+  try {
+    const context = await client.getLogtoContext(req, { fetchUserInfo: false });
+
+    if (!context.isAuthenticated) {
+      // API routes get 401 JSON (no redirect)
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Authentication required" },
+          { status: 401 }
+        );
+      }
+
+      // App routes redirect to sign-in
+      const signInUrl = new URL("/api/logto/sign-in", req.url);
+      signInUrl.searchParams.set("returnTo", pathname);
+      return NextResponse.redirect(signInUrl);
+    }
+  } catch {
+    // Logto session check failed — treat as unauthenticated
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    const signInUrl = new URL("/api/logto/sign-in", req.url);
+    signInUrl.searchParams.set("returnTo", pathname);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

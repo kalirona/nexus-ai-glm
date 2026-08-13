@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const COLLECTION = "nexusai_test_projects";
 
-interface TestProject {
+interface TestProject extends Record<string, unknown> {
   id: number;
   clerk_user_id: string;
   name: string;
@@ -15,14 +15,14 @@ interface TestProject {
 }
 
 /**
- * GET /api/test/projects
+ * GET /api/poc/projects
  *
- * Lists all test projects OWNED BY THE CURRENT CLERK USER.
+ * Lists all test projects OWNED BY THE CURRENT LOGTO USER.
  * User A will see only User A's projects.
  * User B will see only User B's projects.
  *
- * Ownership is determined by clerk_user_id, which is set server-side
- * from the authenticated session — NEVER from client input.
+ * Ownership is determined by the authenticated user's ID, which is set
+ * server-side from the Logto session — NEVER from client input.
  */
 export async function GET() {
   const user = await getCurrentUser();
@@ -34,11 +34,11 @@ export async function GET() {
     }, { status: 503 });
   }
 
-  // Use clerkId if available, fall back to user.id (demo mode)
-  const clerkUserId = user.clerkId || user.id;
+  // Use logtoId if available, fall back to user.id (demo mode)
+  const ownerId = user.logtoId || user.id;
 
   try {
-    const projects = await listItems<TestProject>(COLLECTION, clerkUserId, {
+    const projects = await listItems<TestProject>(COLLECTION, ownerId, {
       fields: ["id", "clerk_user_id", "name", "created_at"],
       sort: "-created_at",
       limit: 50,
@@ -48,7 +48,7 @@ export async function GET() {
       projects,
       count: projects.length,
       owner: {
-        clerkUserId,
+        ownerId,
         name: user.name,
       },
     });
@@ -60,10 +60,10 @@ export async function GET() {
 }
 
 /**
- * POST /api/test/projects
+ * POST /api/poc/projects
  *
- * Creates a new test project OWNED BY THE CURRENT CLERK USER.
- * The clerk_user_id is set server-side — the client CANNOT set it.
+ * Creates a new test project OWNED BY THE CURRENT LOGTO USER.
+ * The clerk_user_id field is set server-side — the client CANNOT set it.
  *
  * Body: { name: string }
  */
@@ -84,15 +84,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
-  const clerkUserId = user.clerkId || user.id;
+  const ownerId = user.logtoId || user.id;
 
   try {
-    const project = await createItem<TestProject>(COLLECTION, clerkUserId, { name });
+    const project = await createItem<TestProject>(COLLECTION, ownerId, { name });
 
     return NextResponse.json({
       project,
       owner: {
-        clerkUserId,
+        ownerId,
         name: user.name,
       },
     }, { status: 201 });

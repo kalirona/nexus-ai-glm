@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const COLLECTION = "nexusai_test_projects";
 
-interface TestProject {
+interface TestProject extends Record<string, unknown> {
   id: number;
   clerk_user_id: string;
   name: string;
@@ -15,10 +15,10 @@ interface TestProject {
 }
 
 /**
- * GET /api/test/projects/:id
+ * GET /api/poc/projects/:id
  *
  * Returns a single test project IF AND ONLY IF it belongs to the current
- * Clerk user. If User B tries to read User A's project, they get 404.
+ * authenticated user. If User B tries to read User A's project, they get 404.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -28,10 +28,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Directus is not configured" }, { status: 503 });
   }
 
-  const clerkUserId = user.clerkId || user.id;
+  const ownerId = user.logtoId || user.id;
 
   try {
-    const project = await getItem<TestProject>(COLLECTION, id, clerkUserId, {
+    const project = await getItem<TestProject>(COLLECTION, id, ownerId, {
       fields: ["id", "clerk_user_id", "name", "created_at"],
     });
 
@@ -50,10 +50,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 /**
- * PATCH /api/test/projects/:id
+ * PATCH /api/poc/projects/:id
  *
  * Updates a test project IF AND ONLY IF it belongs to the current
- * Clerk user. If User B tries to update User A's project, they get 404.
+ * authenticated user. If User B tries to update User A's project, they get 404.
  *
  * Body: { name: string }
  */
@@ -72,10 +72,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
-  const clerkUserId = user.clerkId || user.id;
+  const ownerId = user.logtoId || user.id;
 
   try {
-    const project = await updateItem<TestProject>(COLLECTION, id, clerkUserId, { name });
+    const project = await updateItem<TestProject>(COLLECTION, id, ownerId, { name });
 
     if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
@@ -90,10 +90,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /**
- * DELETE /api/test/projects/:id
+ * DELETE /api/poc/projects/:id
  *
  * Deletes a test project IF AND ONLY IF it belongs to the current
- * Clerk user. If User B tries to delete User A's project, they get 404.
+ * authenticated user. If User B tries to delete User A's project, they get 404.
  */
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -103,10 +103,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Directus is not configured" }, { status: 503 });
   }
 
-  const clerkUserId = user.clerkId || user.id;
+  const ownerId = user.logtoId || user.id;
 
   try {
-    const deleted = await deleteItem(COLLECTION, id, clerkUserId);
+    const deleted = await deleteItem(COLLECTION, id, ownerId);
 
     if (!deleted) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });

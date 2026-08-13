@@ -2,11 +2,20 @@
 
 import { ThemeProvider } from "next-themes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ClerkProvider } from "@clerk/nextjs";
 import { useState, type ReactNode } from "react";
 
-const CLERK_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
+/**
+ * Providers — wraps the app with React context providers.
+ *
+ * ClerkProvider has been REMOVED. Logto authentication is handled
+ * server-side via the Logto SDK (edge client) in API routes and middleware.
+ * The browser never receives Logto credentials — all auth calls go through
+ * Next.js API routes which validate the Logto session cookie server-side.
+ *
+ * Auth flow:
+ *   Browser → /api/logto/sign-in (redirect to Logto) → callback → session cookie
+ *   Browser → /api/* (Next.js reads session cookie server-side via Logto SDK)
+ */
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
     () =>
@@ -21,12 +30,9 @@ export function Providers({ children }: { children: ReactNode }) {
       })
   );
 
-  // ClerkProvider handles missing keys gracefully in keyless mode
   return (
-    <ClerkProvider>
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
-      </ThemeProvider>
-    </ClerkProvider>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    </ThemeProvider>
   );
 }

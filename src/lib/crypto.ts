@@ -18,7 +18,7 @@ const IV_LEN = 12;
 const DEV_FALLBACK_KEY = "nexusai-dev-encryption-key-change-in-production";
 
 function isProduction(): boolean {
-  return process.env.NODE_ENV === "production" || process.env.AUTH_MODE === "clerk";
+  return process.env.NODE_ENV === "production" || process.env.AUTH_MODE === "logto";
 }
 
 function getEncryptionKey(): Buffer {

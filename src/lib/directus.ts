@@ -4,7 +4,7 @@ import "server-only";
  * Directus Server Client — NexusAI → Directus → PostgreSQL
  *
  * ARCHITECTURE:
- *   Browser → Clerk → Next.js → Directus (this client) → PostgreSQL
+ *   Browser → Logto → Next.js → Directus (this client) → PostgreSQL
  *
  * SECURITY:
  *   - Server-only module (import "server-only" prevents client bundling)
@@ -12,11 +12,12 @@ import "server-only";
  *   - NO NEXT_PUBLIC_ prefix — browser never sees these credentials
  *   - All Directus API calls go through Next.js (browser never calls Directus directly)
  *
- * CLERK INTEGRATION:
- *   - The caller (Next.js API route) resolves the Clerk user identity
- *   - The clerkUserId is passed to Directus as a filter
+ * IDENTITY INTEGRATION:
+ *   - The caller (Next.js API route) resolves the Logto user identity
+ *   - The userId is passed to Directus as a filter (stored as clerk_user_id field
+ *     in Directus for backward compatibility — the field name is legacy)
  *   - Directus does NOT authenticate users — it trusts Next.js's auth decision
- *   - Ownership is enforced by filtering on clerkUserId in every query
+ *   - Ownership is enforced by filtering on userId in every query
  */
 
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "";
