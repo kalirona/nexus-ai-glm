@@ -1418,3 +1418,36 @@ Stage Summary:
 - No production data migrated
 - No Prisma/SQLite removed
 - No existing routes modified
+
+---
+Task ID: PHASE-1.4
+Agent: main
+Task: Phase 1.4 — Replace Clerk with Logto authentication (auth-only migration)
+
+Work Log:
+- Audited all Clerk references: 9 files (auth.ts, middleware.ts, providers.tsx, webhook, crypto.ts, directus.ts, 3 POC routes)
+- Installed @logto/next v4.2.10 (edge export for App Router compatibility)
+- Removed @clerk/nextjs + svix dependencies
+- Created src/lib/logto.ts: Singleton LogtoClient (server-only, edge export)
+- Rewrote src/lib/auth.ts: Logto session via next/headers cookies() — no req param needed
+- Rewrote src/middleware.ts: Logto edge client for route protection (401 for API, redirect for pages)
+- Created /api/logto/sign-in, /api/logto/sign-in-callback, /api/logto/sign-out route handlers
+- Removed /api/auth/webhook (Clerk webhook — replaced by lazy user sync)
+- Removed ClerkProvider from providers.tsx (Logto is server-side only)
+- Updated Prisma schema: added logtoId field (clerkId kept for legacy compat)
+- Updated crypto.ts: AUTH_MODE 'clerk' → 'logto'
+- Updated POC routes: clerkId → logtoId
+- Updated .env.example: removed Clerk vars, added Logto vars
+- All 44 existing API routes unchanged (getCurrentUser() backward compatible)
+- Prisma datasource unchanged (still SQLite)
+- Lint: 0 errors ✓
+- TypeScript: 0 errors in new/modified files ✓
+- Push to GitHub: FAILED (PAT expired)
+
+Stage Summary:
+- Clerk completely replaced with Logto
+- All authorization logic preserved (isAdmin, credits, ownership, admin routes)
+- Lazy user sync (no webhook needed)
+- Fail-closed when AUTH_MODE=logto and no session
+- SQLite unchanged, Prisma unchanged, Directus NOT added
+- Real Logto authentication NOT verified (no Logto server in this env)
