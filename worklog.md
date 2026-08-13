@@ -1484,3 +1484,31 @@ Stage Summary:
 - All business logic, auth, and API routes unchanged
 - SQLite backup preserved at db/custom.db
 - Directus NOT added to production data flow
+
+---
+Task ID: PHASE-1.6
+Agent: main
+Task: Phase 1.6 — Remove Directus from NexusAI + finalize Logto→Next.js→Prisma→PostgreSQL
+
+Work Log:
+- Audited all Directus references: 4 source files + 4 config files
+- Removed: src/lib/directus.ts, /api/poc/* (3 routes), DIRECTUS-SETUP.md
+- Removed: DIRECTUS_URL, DIRECTUS_SERVICE_TOKEN from .env.example + docker-compose.yml
+- Cleaned: Clerk comment in providers.tsx
+- Verified: zero Directus/Clerk references in src/ and config files
+- Verified: Prisma datasource = postgresql, Dockerfile uses migrate deploy
+- Verified: Auth = Logto-only, fail-closed, isAdmin from DB only
+- Verified: spendCredits atomic, requireAdmin checks isAdmin
+- Created: PHASE_1.6_FINAL_ARCHITECTURE.md
+- Lint: 0 errors ✓
+- TypeScript: 0 new errors ✓
+- 47 API routes (44 original + 3 Logto auth)
+- clerkId kept in schema (legacy data compat — nullable, unique)
+- Push to GitHub: FAILED (PAT expired)
+
+Stage Summary:
+- Directus completely removed from NexusAI
+- Final architecture: Logto → Next.js → Prisma → PostgreSQL
+- All business logic preserved
+- No Directus, no Clerk, no SQLite in production
+- Real deployment verification PENDING (no PostgreSQL/Logto in this sandbox)
