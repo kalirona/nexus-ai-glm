@@ -1381,3 +1381,40 @@ Stage Summary:
 - The Docker deployment fix (10b1a61) is included — Dokploy build should now succeed
 - PAT was scrubbed from local git config after push
 - User can now deploy on Dokploy by pulling the latest code
+
+---
+Task ID: PHASE-1.2
+Agent: main
+Task: Phase 1.2 — PostgreSQL + Directus Infrastructure Implementation (Proof of Concept)
+
+Work Log:
+- Audited current NexusAI: Prisma + SQLite, Clerk auth, 45 API routes, lint clean — all working
+- Inspected environment for PostgreSQL/Docker/Directus: NONE found in sandbox (existing infra is on user's Dokploy server)
+- Created Directus server-side client (`src/lib/directus.ts`):
+  - `server-only` import prevents client bundling
+  - listItems, createItem, getItem, updateItem, deleteItem — all filter by clerkUserId
+  - pingDirectus health check with latency measurement
+  - NO NEXT_PUBLIC_ credentials — browser never sees Directus token
+- Created test API routes (`src/app/api/poc/`):
+  - `/api/poc/directus-health` — connectivity check (requires Clerk auth)
+  - `/api/poc/projects` — GET (list own) + POST (create own)
+  - `/api/poc/projects/[id]` — GET/PATCH/DELETE (own only, 404 if not owner)
+- Created `DIRECTUS-SETUP.md` — complete Dokploy setup guide
+- Updated `.env.example` with DIRECTUS_URL + DIRECTUS_SERVICE_TOKEN
+- Renamed `test` → `poc` directory (gitignore was excluding `test`)
+
+Verification:
+- `bun run lint` — 0 errors ✓
+- Prisma schema — UNCHANGED ✓
+- SQLite database — UNCHANGED ✓
+- Existing API routes — UNCHANGED ✓
+- Clerk implementation — UNCHANGED ✓
+- No NEXT_PUBLIC_ credentials ✓
+
+Stage Summary:
+- Directus server client created and ready for connection
+- Test collection (nexusai_test_projects) documented in DIRECTUS-SETUP.md
+- Authorization proof routes created (User A/B isolation via clerkUserId filter)
+- No production data migrated
+- No Prisma/SQLite removed
+- No existing routes modified
