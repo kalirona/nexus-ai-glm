@@ -1,4 +1,3 @@
-import LogtoClient from "@logto/next/edge";
 import { NextResponse, type NextRequest } from "next/server";
 
 export const runtime = "edge";
@@ -7,7 +6,7 @@ export const runtime = "edge";
  * GET /api/logto/sign-in-callback
  *
  * Handles the callback from Logto after successful authentication.
- * Reads the returnTo cookie and redirects the user to their original destination.
+ * In demo mode (no Logto configured), redirects to home page.
  */
 export async function GET(req: NextRequest) {
   const endpoint = process.env.LOGTO_ENDPOINT;
@@ -16,12 +15,13 @@ export async function GET(req: NextRequest) {
   const baseUrl = process.env.LOGTO_BASE_URL || new URL(req.url).origin;
   const cookieSecret = process.env.LOGTO_COOKIE_SECRET;
 
+  // Demo mode — no Logto configured, redirect home
   if (!endpoint || !appId || !appSecret || !cookieSecret) {
-    return NextResponse.json(
-      { error: "Logto is not configured" },
-      { status: 503 }
-    );
+    return NextResponse.redirect(new URL("/", baseUrl));
   }
+
+  // Dynamically import LogtoClient only when configured
+  const { default: LogtoClient } = await import("@logto/next/edge");
 
   const client = new LogtoClient({
     endpoint,
@@ -33,7 +33,6 @@ export async function GET(req: NextRequest) {
   });
 
   try {
-    // handleSignInCallback returns a handler function — call it with the request
     const callbackHandler = client.handleSignInCallback(baseUrl);
     const response = await callbackHandler(req);
 
@@ -60,9 +59,6 @@ export async function GET(req: NextRequest) {
 
     return redirectResponse;
   } catch (err) {
-    return NextResponse.json(
-      { error: "Sign-in callback failed", message: err instanceof Error ? err.message : "Unknown error" },
-      { status: 400 }
-    );
+    return NextResponse.redirect(new URL("/", baseUrl));
   }
 }

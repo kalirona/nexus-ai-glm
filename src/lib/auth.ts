@@ -35,6 +35,18 @@ import { cookies, headers } from "next/headers";
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.NODE_ENV === "production" ? "logto" : "demo");
 
 /**
+ * Effective auth mode — if AUTH_MODE=logto but Logto env vars aren't set,
+ * fall back to demo mode. This prevents the app from being completely locked
+ * out when env vars are missing in production.
+ */
+function getEffectiveAuthMode(): "demo" | "logto" {
+  if (AUTH_MODE === "demo") return "demo";
+  // If AUTH_MODE is "logto" but Logto isn't configured, fall back to demo
+  if (!isLogtoConfigured()) return "demo";
+  return "logto";
+}
+
+/**
  * Gets the Logto authenticated user from the current request context.
  * Uses next/headers cookies() to read the session cookie automatically.
  * Returns null if not authenticated or Logto not configured.
@@ -110,7 +122,8 @@ export async function getCurrentUser(req?: Request) {
   const logtoUser = await getLogtoUser(req);
 
   if (!logtoUser) {
-    if (AUTH_MODE === "demo") {
+    // Use effective auth mode — falls back to demo if Logto isn't configured
+    if (getEffectiveAuthMode() === "demo") {
       // Demo mode (sandbox/preview) — return the demo user
       return getDemoUser();
     }

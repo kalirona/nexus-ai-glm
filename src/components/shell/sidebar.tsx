@@ -365,7 +365,9 @@ function ProfileMenu({
   collapsed?: boolean;
 }) {
   const handleLogout = () => {
-    toast.success("Signed out (demo) — session preserved for preview.");
+    // Redirect to Logto sign-out endpoint
+    // In demo mode, this will just show a toast (the endpoint returns 503 if Logto isn't configured)
+    window.location.href = "/api/logto/sign-out";
   };
 
   return (

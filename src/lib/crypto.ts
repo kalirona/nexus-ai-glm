@@ -18,7 +18,19 @@ const IV_LEN = 12;
 const DEV_FALLBACK_KEY = "nexusai-dev-encryption-key-change-in-production";
 
 function isProduction(): boolean {
-  return process.env.NODE_ENV === "production" || process.env.AUTH_MODE === "logto";
+  // Consider production if NODE_ENV is production OR AUTH_MODE is logto
+  // (but only if Logto is actually configured)
+  if (process.env.NODE_ENV === "production") return true;
+  if (process.env.AUTH_MODE === "logto") {
+    // Only treat as production if Logto env vars are actually set
+    return !!(
+      process.env.LOGTO_ENDPOINT &&
+      process.env.LOGTO_APP_ID &&
+      process.env.LOGTO_APP_SECRET &&
+      process.env.LOGTO_COOKIE_SECRET
+    );
+  }
+  return false;
 }
 
 function getEncryptionKey(): Buffer {

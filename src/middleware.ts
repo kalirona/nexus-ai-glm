@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getLogtoClient, isLogtoConfigured } from "@/lib/logto";
 
 /**
  * Middleware — Logto-compatible authentication protection.
@@ -38,8 +37,23 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 export default async function middleware(req: NextRequest) {
-  // Demo mode — pass through everything
-  if (AUTH_MODE === "demo" || !isLogtoConfigured()) {
+  // Demo mode or Logto not configured — pass through everything
+  // getCurrentUser() handles the demo fallback
+  if (AUTH_MODE === "demo") {
+    return NextResponse.next();
+  }
+
+  // Check if Logto is actually configured (all 5 env vars must be set)
+  const logtoConfigured = !!(
+    process.env.LOGTO_ENDPOINT &&
+    process.env.LOGTO_APP_ID &&
+    process.env.LOGTO_APP_SECRET &&
+    process.env.LOGTO_COOKIE_SECRET
+  );
+
+  // If Logto is not configured but AUTH_MODE is "logto", fall back to pass-through
+  // This prevents the app from being completely locked out if env vars are missing
+  if (!logtoConfigured) {
     return NextResponse.next();
   }
 
@@ -50,11 +64,19 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check Logto session
-  const client = getLogtoClient();
-  if (!client) {
-    return NextResponse.next();
-  }
+  // Dynamically import LogtoClient only when needed
+  const { default: LogtoClient } = await import("@logto/next/edge");
+
+  const baseUrl = process.env.LOGTO_BASE_URL || new URL(req.url).origin;
+
+  const client = new LogtoClient({
+    endpoint: process.env.LOGTO_ENDPOINT!,
+    appId: process.env.LOGTO_APP_ID!,
+    appSecret: process.env.LOGTO_APP_SECRET!,
+    baseUrl,
+    cookieSecret: process.env.LOGTO_COOKIE_SECRET!,
+    cookieSecure: process.env.NODE_ENV === "production",
+  });
 
   try {
     const context = await client.getLogtoContext(req, { fetchUserInfo: false });
