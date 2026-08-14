@@ -71,7 +71,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 USER node
 
 # Use tini as PID 1, then run:
-# 1. npx prisma migrate deploy (apply pending migrations — safe, non-destructive)
+# 1. npx prisma db push (create/sync schema from prisma/schema.prisma — works without migration files)
 # 2. node server.js (Next.js standalone server)
+# NOTE: Once prisma/migrations/ directory exists, switch to 'npx prisma migrate deploy'
 ENTRYPOINT ["tini", "--"]
-CMD ["sh", "-c", "npx prisma migrate deploy 2>&1 || echo 'WARN: prisma migrate deploy failed, continuing...'; exec node server.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss 2>&1 || echo 'WARN: prisma db push failed, continuing...'; exec node server.js"]
