@@ -23,11 +23,14 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL("/", baseUrl));
   }
 
+  // Strip trailing slash from endpoint (Logto SDK appends paths)
+  const cleanEndpoint = endpoint.replace(/\/+$/, "");
+
   // Dynamically import LogtoClient only when configured
   const { default: LogtoClient } = await import("@logto/next/edge");
 
   const client = new LogtoClient({
-    endpoint,
+    endpoint: cleanEndpoint,
     appId,
     appSecret,
     baseUrl,
@@ -38,7 +41,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const returnTo = url.searchParams.get("returnTo") || "/";
 
-  const signInHandler = client.handleSignIn(`${baseUrl}/api/logto/sign-in-callback`);
+  // Use the new object parameter format (old string format is deprecated)
+  const signInHandler = client.handleSignIn({
+    redirectUri: `${baseUrl}/api/logto/sign-in-callback`,
+  });
   const response = await signInHandler(req);
 
   // Store returnTo in a cookie so the callback can read it

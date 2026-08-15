@@ -15,16 +15,19 @@ import LogtoClient from "@logto/next/edge";
  * CONFIGURATION:
  *   Required env vars:
  *     LOGTO_ENDPOINT      — Logto server URL (e.g., https://logto.yourdomain.com)
+ *                           DO NOT add trailing slash or /oidc path
  *     LOGTO_APP_ID        — Logto application ID
  *     LOGTO_APP_SECRET    — Logto application secret (server-side only)
  *     LOGTO_BASE_URL      — NexusAI base URL (e.g., https://nexusai.yourdomain.com)
  *     LOGTO_COOKIE_SECRET — Cookie encryption secret (generate: openssl rand -hex 32)
  */
 
-const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || "";
+// Strip trailing slashes — Logto SDK appends /oidc/.well-known/openid-configuration
+// A trailing slash causes a 404 (double slash in the URL)
+const LOGTO_ENDPOINT = (process.env.LOGTO_ENDPOINT || "").replace(/\/+$/, "");
 const LOGTO_APP_ID = process.env.LOGTO_APP_ID || "";
 const LOGTO_APP_SECRET = process.env.LOGTO_APP_SECRET || "";
-const LOGTO_BASE_URL = process.env.LOGTO_BASE_URL || "http://localhost:3000";
+const LOGTO_BASE_URL = (process.env.LOGTO_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 const LOGTO_COOKIE_SECRET = process.env.LOGTO_COOKIE_SECRET || "";
 
 let client: LogtoClient | null = null;

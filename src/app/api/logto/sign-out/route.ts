@@ -20,11 +20,14 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL("/", baseUrl));
   }
 
+  // Strip trailing slash from endpoint
+  const cleanEndpoint = endpoint.replace(/\/+$/, "");
+
   // Dynamically import LogtoClient only when configured
   const { default: LogtoClient } = await import("@logto/next/edge");
 
   const client = new LogtoClient({
-    endpoint,
+    endpoint: cleanEndpoint,
     appId,
     appSecret,
     baseUrl,
@@ -33,7 +36,10 @@ export async function GET(req: Request) {
   });
 
   try {
-    const signOutHandler = client.handleSignOut(baseUrl);
+    // Use the new object parameter format
+    const signOutHandler = client.handleSignOut({
+      redirectUri: baseUrl,
+    });
     const response = await signOutHandler(req as any);
     return response;
   } catch (err) {
