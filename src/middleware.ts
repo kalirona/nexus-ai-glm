@@ -38,21 +38,20 @@ function isPublicRoute(pathname: string): boolean {
 
 export default async function middleware(req: NextRequest) {
   // Demo mode or Logto not configured — pass through everything
-  // getCurrentUser() handles the demo fallback
   if (AUTH_MODE === "demo") {
     return NextResponse.next();
   }
 
-  // Check if Logto is actually configured (all 5 env vars must be set)
-  const logtoConfigured = !!(
-    process.env.LOGTO_ENDPOINT &&
-    process.env.LOGTO_APP_ID &&
-    process.env.LOGTO_APP_SECRET &&
-    process.env.LOGTO_COOKIE_SECRET
-  );
+  // Check if Logto is actually configured (all env vars must be set)
+  const endpoint = process.env.LOGTO_ENDPOINT;
+  const appId = process.env.LOGTO_APP_ID;
+  const appSecret = process.env.LOGTO_APP_SECRET;
+  const cookieSecret = process.env.LOGTO_COOKIE_SECRET;
+  const baseUrl = (process.env.LOGTO_BASE_URL || "").replace(/\/+$/, "");
+
+  const logtoConfigured = !!(endpoint && appId && appSecret && cookieSecret && baseUrl);
 
   // If Logto is not configured but AUTH_MODE is "logto", fall back to pass-through
-  // This prevents the app from being completely locked out if env vars are missing
   if (!logtoConfigured) {
     return NextResponse.next();
   }
@@ -64,17 +63,18 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Sanitize endpoint: strip trailing slashes AND /oidc suffix
+  const cleanEndpoint = endpoint!.replace(/\/+$/, "").replace(/\/oidc$/, "");
+
   // Dynamically import LogtoClient only when needed
   const { default: LogtoClient } = await import("@logto/next/edge");
 
-  const baseUrl = process.env.LOGTO_BASE_URL || new URL(req.url).origin;
-
   const client = new LogtoClient({
-    endpoint: process.env.LOGTO_ENDPOINT!,
-    appId: process.env.LOGTO_APP_ID!,
-    appSecret: process.env.LOGTO_APP_SECRET!,
+    endpoint: cleanEndpoint,
+    appId: appId!,
+    appSecret: appSecret!,
     baseUrl,
-    cookieSecret: process.env.LOGTO_COOKIE_SECRET!,
+    cookieSecret: cookieSecret!,
     cookieSecure: process.env.NODE_ENV === "production",
   });
 
@@ -91,7 +91,8 @@ export default async function middleware(req: NextRequest) {
       }
 
       // App routes redirect to sign-in
-      const signInUrl = new URL("/api/logto/sign-in", req.url);
+      // Use LOGTO_BASE_URL for the redirect URL (not req.url which may be internal)
+      const signInUrl = new URL("/api/logto/sign-in", baseUrl);
       signInUrl.searchParams.set("returnTo", pathname);
       return NextResponse.redirect(signInUrl);
     }
@@ -104,7 +105,7 @@ export default async function middleware(req: NextRequest) {
       );
     }
 
-    const signInUrl = new URL("/api/logto/sign-in", req.url);
+    const signInUrl = new URL("/api/logto/sign-in", baseUrl);
     signInUrl.searchParams.set("returnTo", pathname);
     return NextResponse.redirect(signInUrl);
   }

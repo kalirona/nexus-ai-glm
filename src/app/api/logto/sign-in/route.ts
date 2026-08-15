@@ -12,19 +12,20 @@ export const runtime = "edge";
  *   returnTo — the path to redirect to after sign-in (default: /)
  */
 export async function GET(req: Request) {
-  const endpoint = process.env.LOGTO_ENDPOINT;
-  const appId = process.env.LOGTO_APP_ID;
-  const appSecret = process.env.LOGTO_APP_SECRET;
-  const baseUrl = process.env.LOGTO_BASE_URL || new URL(req.url).origin;
-  const cookieSecret = process.env.LOGTO_COOKIE_SECRET;
+  const endpoint = process.env.LOGTO_ENDPOINT || "";
+  const appId = process.env.LOGTO_APP_ID || "";
+  const appSecret = process.env.LOGTO_APP_SECRET || "";
+  const baseUrl = (process.env.LOGTO_BASE_URL || "").replace(/\/+$/, "");
+  const cookieSecret = process.env.LOGTO_COOKIE_SECRET || "";
 
   // Demo mode — no Logto configured, redirect home
-  if (!endpoint || !appId || !appSecret || !cookieSecret) {
-    return NextResponse.redirect(new URL("/", baseUrl));
+  if (!endpoint || !appId || !appSecret || !cookieSecret || !baseUrl) {
+    return NextResponse.redirect(new URL("/", req.url));
   }
 
-  // Strip trailing slash from endpoint (Logto SDK appends paths)
-  const cleanEndpoint = endpoint.replace(/\/+$/, "");
+  // Sanitize endpoint: strip trailing slashes AND /oidc suffix
+  // The SDK appends /oidc/.well-known/openid-configuration automatically
+  const cleanEndpoint = endpoint.replace(/\/+$/, "").replace(/\/oidc$/, "");
 
   // Dynamically import LogtoClient only when configured
   const { default: LogtoClient } = await import("@logto/next/edge");
@@ -41,9 +42,13 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const returnTo = url.searchParams.get("returnTo") || "/";
 
+  // The redirect_uri MUST be the public-facing URL, not the internal container URL
+  // LOGTO_BASE_URL must be set to https://nex.sitenexai.com in Dokploy env vars
+  const redirectUri = `${baseUrl}/api/logto/sign-in-callback`;
+
   // Use the new object parameter format (old string format is deprecated)
   const signInHandler = client.handleSignIn({
-    redirectUri: `${baseUrl}/api/logto/sign-in-callback`,
+    redirectUri,
   });
   const response = await signInHandler(req);
 

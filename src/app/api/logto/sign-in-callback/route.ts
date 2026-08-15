@@ -9,19 +9,19 @@ export const runtime = "edge";
  * In demo mode (no Logto configured), redirects to home page.
  */
 export async function GET(req: NextRequest) {
-  const endpoint = process.env.LOGTO_ENDPOINT;
-  const appId = process.env.LOGTO_APP_ID;
-  const appSecret = process.env.LOGTO_APP_SECRET;
-  const baseUrl = process.env.LOGTO_BASE_URL || new URL(req.url).origin;
-  const cookieSecret = process.env.LOGTO_COOKIE_SECRET;
+  const endpoint = process.env.LOGTO_ENDPOINT || "";
+  const appId = process.env.LOGTO_APP_ID || "";
+  const appSecret = process.env.LOGTO_APP_SECRET || "";
+  const baseUrl = (process.env.LOGTO_BASE_URL || "").replace(/\/+$/, "");
+  const cookieSecret = process.env.LOGTO_COOKIE_SECRET || "";
 
   // Demo mode — no Logto configured, redirect home
-  if (!endpoint || !appId || !appSecret || !cookieSecret) {
-    return NextResponse.redirect(new URL("/", baseUrl));
+  if (!endpoint || !appId || !appSecret || !cookieSecret || !baseUrl) {
+    return NextResponse.redirect(new URL("/", req.url));
   }
 
-  // Strip trailing slash from endpoint
-  const cleanEndpoint = endpoint.replace(/\/+$/, "");
+  // Sanitize endpoint
+  const cleanEndpoint = endpoint.replace(/\/+$/, "").replace(/\/oidc$/, "");
 
   // Dynamically import LogtoClient only when configured
   const { default: LogtoClient } = await import("@logto/next/edge");
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     // Read the returnTo cookie
     const returnTo = req.cookies.get("logto_return_to")?.value || "/";
 
-    // Build redirect URL
+    // Build redirect URL using LOGTO_BASE_URL (not req.url which may be internal)
     const redirectUrl = new URL(returnTo, baseUrl);
 
     // Create a redirect response, preserving the Set-Cookie headers from the callback
