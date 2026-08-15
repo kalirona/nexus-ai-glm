@@ -1,6 +1,8 @@
 import ZAI from "z-ai-web-dev-sdk";
 import { resolveKeyForRole, getSetting } from "@/lib/settings";
 import { logAiUsage } from "@/lib/provider-service";
+import { writeFileSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
 
 /**
  * AI provider abstraction (Service Layer).
@@ -12,12 +14,41 @@ import { logAiUsage } from "@/lib/provider-service";
  * Key resolution: admin-configured API keys (with role: chat | image | all)
  * take priority. If no key is configured, fall back to the SDK which reads
  * from the environment.
+ *
+ * SDK CONFIG:
+ * The z-ai-web-dev-sdk reads from a config file (.z-ai-config), not env vars.
+ * In Docker/production, we create this file at startup from ZAI_API_KEY
+ * and ZAI_BASE_URL env vars if they're set.
  */
 
 let sdkInstance: ZAI | null = null;
 
+/** Writes the ZAI SDK config file from env vars if not already present. */
+function ensureZaiConfigFile() {
+  const configPath = join(process.cwd(), ".z-ai-config");
+
+  // If config file already exists, don't overwrite
+  if (existsSync(configPath)) return;
+
+  // If ZAI_API_KEY env var is set, create the config file
+  const apiKey = process.env.ZAI_API_KEY;
+  const baseUrl = process.env.ZAI_BASE_URL || "https://internal-api.z.ai/v1";
+
+  if (apiKey) {
+    try {
+      const config = JSON.stringify({ baseUrl, apiKey });
+      writeFileSync(configPath, config, { mode: 0o600 });
+      console.log("[NexusAI] Created .z-ai-config from ZAI_API_KEY env var");
+    } catch {
+      // Can't write file — will fall back to /etc/.z-ai-config if available
+    }
+  }
+}
+
 async function getSDK(): Promise<ZAI> {
   if (!sdkInstance) {
+    // Ensure config file exists from env vars before creating SDK
+    ensureZaiConfigFile();
     sdkInstance = await ZAI.create();
   }
   return sdkInstance;

@@ -46,14 +46,14 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Copy Prisma files (needed for SQLite + schema sync at startup)
+# Copy Prisma files (needed for PostgreSQL schema sync at startup)
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # Copy prisma CLI so we can run `npx prisma db push` at startup
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
-# Create data directory (for any local file storage) + set ownership to node user
+# Create data directory for ZAI SDK config file (writable by node user)
 RUN mkdir -p /app/data && chown -R node:node /app
 
 # Expose port (3011 to avoid conflicts with other apps on 3000)
