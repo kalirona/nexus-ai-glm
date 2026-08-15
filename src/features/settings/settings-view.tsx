@@ -15,6 +15,7 @@ import {
   Check,
   Copy,
   Star,
+  LogOut,
   Loader2,
   Sparkles,
   AlertTriangle,
@@ -281,6 +282,27 @@ function AccountTab({ user }: { user?: { name: string; email: string; plan: stri
             }}
           >
             <Sparkles className="h-3.5 w-3.5" /> Replay tour
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold sm:text-base">Authentication & Security</h3>
+            <p className="text-sm text-muted-foreground">
+              Password, 2FA, and account security are managed by Logto
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              window.location.href = "/api/logto/sign-out";
+            }}
+          >
+            <LogOut className="h-3.5 w-3.5" /> Sign out
           </Button>
         </div>
       </Card>
@@ -826,7 +848,7 @@ function DangerRow({ title, desc, cta, severe }: { title: string; desc: string; 
         variant="outline"
         size="sm"
         className={cn("shrink-0", severe && "border-rose-500/40 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400")}
-        onClick={() => toast.error("This is a demo — destructive actions are disabled.")}
+        onClick={() => toast.info("Contact your platform administrator to perform this action.")}
       >
         {cta}
       </Button>

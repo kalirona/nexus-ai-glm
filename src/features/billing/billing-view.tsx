@@ -54,11 +54,11 @@ export function BillingView() {
   const creditPct = Math.min(100, Math.round((credits / plan.credits) * 100));
 
   const buyPack = (pack: (typeof CREDIT_PACKS)[number]) => {
-    toast.success(`+${(pack.credits + pack.bonus).toLocaleString()} credits added (demo)`);
+    toast.info("Payment integration coming soon. Contact support to purchase credits.");
   };
 
   const upgrade = (name: string) => {
-    toast.success(`Switched to ${name} (demo) — no payment taken`);
+    toast.info("Payment integration coming soon. Contact support to upgrade.");
   };
 
   return (
